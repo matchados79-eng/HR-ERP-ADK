@@ -81,6 +81,11 @@
           <span class="nav-icon">⚖️</span> Saudi Compliance Hub
         </a>
       </li>
+      <li class="nav-item" id="nav-suppliers-item">
+        <a class="nav-link" onclick="switchSection('suppliers')">
+          <span class="nav-icon">🏢</span> Supplier Payments
+        </a>
+      </li>
       <li class="nav-item" id="nav-settings-item">
         <a class="nav-link" onclick="switchSection('settings')">
           <span class="nav-icon">⚙️</span> System & Users Settings
@@ -90,7 +95,7 @@
     
     <div class="sidebar-footer">
       <div>Ministry Compliant • SAMA WPS Ready</div>
-      <small>Supabase & Vercel Certified v3.0</small>
+      <small>Supabase & Vercel Certified v3.1</small>
     </div>
   </aside>
 
@@ -425,15 +430,64 @@
       </div>
     </section>
 
-    <!-- SECTION 6: SETTINGS & USER ACCOUNTS -->
+    <!-- SECTION 6: SUPPLIER PAYMENT TRACKING -->
+    <section id="section-suppliers" class="content-section">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">🏢 Supplier Payment Tracking</h3>
+          <button class="btn btn-primary" onclick="openRecordSupplierPaymentModal()">+ Record Supplier Invoice</button>
+        </div>
+
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+          Track vendor invoices, supply dates, payment statuses, amounts (SAR), and remarks.
+        </p>
+
+        <!-- Filters Bar -->
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+          <input type="text" id="supplier-search" class="form-control" style="max-width: 280px;" placeholder="Search vendor company, invoice #, details..." oninput="loadSupplierPayments()">
+          
+          <select id="supplier-filter-status" class="form-control" style="max-width: 180px;" onchange="loadSupplierPayments()">
+            <option value="">All Payment Statuses</option>
+            <option value="Pending">Pending Approval / Payment</option>
+            <option value="Approved">Approved for Disbursal</option>
+            <option value="Paid">Fully Paid & Settled</option>
+          </select>
+        </div>
+
+        <!-- Supplier Payments Table -->
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Company (Vendor)</th>
+                <th>Invoice #</th>
+                <th>Invoice Date</th>
+                <th>Invoice Details</th>
+                <th>Supply Date</th>
+                <th>Amount (SAR)</th>
+                <th>Status</th>
+                <th>Remarks</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="supplier-payments-body">
+              <tr><td colspan="10" style="text-align: center;">Loading supplier payments...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 7: SETTINGS & USER ACCOUNTS -->
     <section id="section-settings" class="content-section">
       <!-- Create Sub-Accounts Card -->
       <div class="card" style="margin-bottom: 20px; border-color: #BFDBFE;">
         <div class="card-header">
-          <h3 class="card-title">👤 User Account Creation & Role Permissions</h3>
+          <h3 class="card-title">👤 User Accounts & Credential Management</h3>
         </div>
         <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 15px;">
-          Create accounts for staff members and assign roles (e.g. <strong>Viewer / Directory Only</strong> can view employees without salary details or admin access).
+          Manage accounts, reset passwords, change user emails, or assign roles (e.g. <strong>Viewer / Directory Only</strong>).
         </p>
 
         <form id="create-user-form" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px;" onsubmit="event.preventDefault(); submitCreateUser();">
@@ -472,10 +526,11 @@
                 <th>Email Address</th>
                 <th>Role Permission</th>
                 <th>Created At</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="users-list-body">
-              <tr><td colspan="5" style="text-align: center;">Loading user accounts...</td></tr>
+              <tr><td colspan="6" style="text-align: center;">Loading user accounts...</td></tr>
             </tbody>
           </table>
         </div>
@@ -533,7 +588,100 @@
 
   </main>
 
-  <!-- MODAL 1: ADD EMPLOYEE -->
+  <!-- MODAL 1: RECORD SUPPLIER PAYMENT -->
+  <div id="modal-record-supplier" class="modal-overlay">
+    <div class="modal-box" style="max-width: 550px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Record Supplier Invoice / Payment</h3>
+        <button class="modal-close" onclick="closeModal('modal-record-supplier')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="record-supplier-form">
+          <div class="form-group">
+            <label>Company Name (Supplier / Vendor) *</label>
+            <input type="text" name="company_name" class="form-control" required placeholder="e.g. Al-Jazeera Supplies Co.">
+          </div>
+          <div class="form-group">
+            <label>Invoice Number</label>
+            <input type="text" name="invoice_number" class="form-control" placeholder="INV-2026-0891">
+          </div>
+          <div class="form-group">
+            <label>Invoice Date *</label>
+            <input type="date" name="invoice_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Supply Date (Date Goods/Services Supplied) *</label>
+            <input type="date" name="supply_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Invoice Details / Description *</label>
+            <textarea name="invoice_details" class="form-control" rows="2" required placeholder="Supply of IT hardware, networking cables, and office desks..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Amount (SAR) *</label>
+            <input type="number" step="0.01" name="amount" class="form-control" required value="5000">
+          </div>
+          <div class="form-group">
+            <label>Initial Status *</label>
+            <select name="status" class="form-control" required>
+              <option value="Pending">Pending Payment</option>
+              <option value="Approved">Approved for Payment</option>
+              <option value="Paid">Fully Paid & Settled</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Remarks / Notes</label>
+            <input type="text" name="remarks" class="form-control" placeholder="Payment due within 30 days via bank transfer...">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-record-supplier')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitRecordSupplierPayment()">Save Supplier Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: EDIT USER ACCOUNT & CREDENTIALS -->
+  <div id="modal-edit-user" class="modal-overlay">
+    <div class="modal-box" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit User Credentials & Role</h3>
+        <button class="modal-close" onclick="closeModal('modal-edit-user')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-user-form">
+          <input type="hidden" id="edit-user-id">
+          <div class="form-group">
+            <label>Full Name *</label>
+            <input type="text" id="edit-user-fullname" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Email Address *</label>
+            <input type="email" id="edit-user-email" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Account Role *</label>
+            <select id="edit-user-role" class="form-control" required>
+              <option value="viewer">Viewer (Directory Only / Restricted)</option>
+              <option value="hr_manager">HR Manager (Directory + Payroll + Leaves)</option>
+              <option value="admin">Administrator (Full Access)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Reset Password (Optional)</label>
+            <input type="password" id="edit-user-password" class="form-control" placeholder="Leave blank to keep current password">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-edit-user')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditUser()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: ADD EMPLOYEE -->
   <div id="modal-add-employee" class="modal-overlay">
     <div class="modal-box">
       <div class="modal-header">
@@ -629,7 +777,7 @@
     </div>
   </div>
 
-  <!-- MODAL 2: EMPLOYEE DETAIL & FILE VAULT -->
+  <!-- MODAL 4: EMPLOYEE DETAIL & FILE VAULT -->
   <div id="modal-emp-detail" class="modal-overlay">
     <div class="modal-box" style="max-width: 900px;">
       <div class="modal-header">
@@ -747,7 +895,7 @@
     </div>
   </div>
 
-  <!-- MODAL 3: RUN PAYROLL -->
+  <!-- MODAL 5: RUN PAYROLL -->
   <div id="modal-run-payroll" class="modal-overlay">
     <div class="modal-box" style="max-width: 450px;">
       <div class="modal-header">
@@ -778,7 +926,7 @@
     </div>
   </div>
 
-  <!-- MODAL 4: APPLY LEAVE -->
+  <!-- MODAL 6: APPLY LEAVE -->
   <div id="modal-apply-leave" class="modal-overlay">
     <div class="modal-box" style="max-width: 500px;">
       <div class="modal-header">

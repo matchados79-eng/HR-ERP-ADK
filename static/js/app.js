@@ -1,10 +1,12 @@
-/* Saudi HR ERP System - Main JavaScript Application with User Creation & Role Permissions */
+/* Saudi HR ERP System - Main JavaScript Application with Supplier Payment Tracking */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
 let currentUserRole = 'admin';
 let allDepartments = [];
 let allEmployees = [];
+let allUsers = [];
+let allSupplierPayments = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   checkAuthSession();
@@ -38,12 +40,12 @@ function checkAuthSession() {
   loadEmployees();
   loadPayrollRuns();
   loadLeaves();
+  loadSupplierPayments();
   loadSettings();
   loadUsersList();
 }
 
 function applyRoleUIRestrictions() {
-  // If user is 'viewer' (Directory Only / Restricted)
   if (currentUserRole === 'viewer') {
     const addEmpBtn = document.getElementById('add-emp-btn');
     if (addEmpBtn) addEmpBtn.style.display = 'none';
@@ -133,60 +135,6 @@ function getAuthHeaders() {
   };
 }
 
-// User Accounts Management
-async function loadUsersList() {
-  if (currentUserRole === 'viewer') return;
-  try {
-    const res = await fetch('/api/users', { headers: getAuthHeaders() });
-    if (!res.ok) return;
-    const users = await res.json();
-
-    const tbody = document.getElementById('users-list-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td>#USR-${u.id}</td>
-        <td><strong>${u.full_name}</strong></td>
-        <td><code>${u.email}</code></td>
-        <td><span class="badge ${u.role === 'admin' ? 'badge-saudi' : (u.role === 'hr_manager' ? 'badge-active' : 'badge-expat')}">${u.role.toUpperCase()}</span></td>
-        <td>${u.created_at || 'N/A'}</td>
-      </tr>
-    `).join('');
-
-  } catch (err) {
-    console.error('Error loading users:', err);
-  }
-}
-
-async function submitCreateUser() {
-  const fullName = document.getElementById('new-user-fullname').value;
-  const email = document.getElementById('new-user-email').value;
-  const password = document.getElementById('new-user-password').value;
-  const role = document.getElementById('new-user-role').value;
-
-  try {
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ email, password, full_name: fullName, role })
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      alert(`Error creating user: ${err.detail}`);
-      return;
-    }
-
-    alert(`User account created successfully for ${fullName} (${role})!`);
-    document.getElementById('create-user-form').reset();
-    loadUsersList();
-
-  } catch (err) {
-    alert(`Failed to create user account: ${err}`);
-  }
-}
-
 // Navigation Switching
 function switchSection(sectionId) {
   document.querySelectorAll('.content-section').forEach(sec => sec.classList.remove('active'));
@@ -203,6 +151,7 @@ function switchSection(sectionId) {
     'payroll': ['Payroll & WPS Engine', 'Process monthly salaries, generate SAMA WPS CSV files, and print PDF payslips'],
     'leaves': ['Leave Management', 'Track annual leave balances, sick leave requests, and approval workflows'],
     'compliance': ['Saudi Compliance Hub', 'Interactive EOSB (Articles 84/85), GOSI contributions, and Nitaqat tools'],
+    'suppliers': ['Supplier Payment Tracking', 'Track vendor invoices, supply dates, payment statuses, and remarks'],
     'settings': ['System & Users Settings', 'Configure company legal details, CR number, and Google Drive Backups']
   };
 
@@ -215,6 +164,7 @@ function switchSection(sectionId) {
   if (sectionId === 'employees') loadEmployees();
   if (sectionId === 'payroll') loadPayrollRuns();
   if (sectionId === 'leaves') loadLeaves();
+  if (sectionId === 'suppliers') loadSupplierPayments();
   if (sectionId === 'settings') loadUsersList();
 }
 
@@ -278,7 +228,139 @@ async function loadDashboardData() {
   }
 }
 
-// 2. DEPARTMENTS & EMPLOYEES
+// 2. SUPPLIER PAYMENT TRACKING
+async function loadSupplierPayments() {
+  try {
+    const search = document.getElementById('supplier-search') ? document.getElementById('supplier-search').value : '';
+    const status = document.getElementById('supplier-filter-status') ? document.getElementById('supplier-filter-status').value : '';
+
+    let url = '/api/suppliers/payments?';
+    if (search) url += `search=${encodeURIComponent(search)}&`;
+    if (status) url += `status=${encodeURIComponent(status)}&`;
+
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    allSupplierPayments = await res.json();
+
+    const tbody = document.getElementById('supplier-payments-body');
+    if (!tbody) return;
+
+    if (allSupplierPayments.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center;">No supplier payment records found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = allSupplierPayments.map(sp => `
+      <tr>
+        <td>#INV-${sp.id}</td>
+        <td><strong>${sp.company_name}</strong></td>
+        <td><code>${sp.invoice_number || 'N/A'}</code></td>
+        <td>${sp.invoice_date}</td>
+        <td>${sp.invoice_details || 'N/A'}</td>
+        <td>${sp.supply_date}</td>
+        <td><strong style="color: var(--primary);">SAR ${sp.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
+        <td>
+          <span class="badge ${sp.status === 'Paid' ? 'badge-active' : (sp.status === 'Approved' ? 'badge-saudi' : 'badge-pending')}">
+            ${sp.status}
+          </span>
+        </td>
+        <td>${sp.remarks || 'N/A'}</td>
+        <td>
+          <div style="display: flex; gap: 6px;">
+            ${sp.status === 'Pending' && currentUserRole !== 'viewer' ? `
+              <button class="btn btn-outline" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateSupplierPaymentStatus(${sp.id}, 'Approved')">Approve</button>
+            ` : ''}
+            ${sp.status !== 'Paid' && currentUserRole !== 'viewer' ? `
+              <button class="btn btn-success" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateSupplierPaymentStatus(${sp.id}, 'Paid')">Mark Paid</button>
+            ` : ''}
+            ${currentUserRole === 'admin' ? `
+              <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">Delete</button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+  } catch (err) {
+    console.error('Error loading supplier payments:', err);
+  }
+}
+
+function openRecordSupplierPaymentModal() {
+  document.getElementById('record-supplier-form').reset();
+  openModal('modal-record-supplier');
+}
+
+async function submitRecordSupplierPayment() {
+  const form = document.getElementById('record-supplier-form');
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData.entries());
+
+  data.amount = parseFloat(data.amount || 0);
+
+  try {
+    const res = await fetch('/api/suppliers/payments', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Error saving supplier payment: ${err.detail}`);
+      return;
+    }
+
+    closeModal('modal-record-supplier');
+    loadSupplierPayments();
+    alert('Supplier payment invoice recorded successfully!');
+
+  } catch (err) {
+    alert(`Failed to record supplier payment: ${err}`);
+  }
+}
+
+async function updateSupplierPaymentStatus(id, newStatus) {
+  try {
+    const res = await fetch(`/api/suppliers/payments/${id}/status`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    if (!res.ok) {
+      alert('Failed to update status');
+      return;
+    }
+
+    loadSupplierPayments();
+
+  } catch (err) {
+    alert(`Status update error: ${err}`);
+  }
+}
+
+async function deleteSupplierPayment(id) {
+  if (!confirm('Are you sure you want to delete this supplier payment record?')) return;
+
+  try {
+    const res = await fetch(`/api/suppliers/payments/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      alert('Failed to delete supplier payment record.');
+      return;
+    }
+
+    loadSupplierPayments();
+
+  } catch (err) {
+    alert(`Delete error: ${err}`);
+  }
+}
+
+// 3. DEPARTMENTS & EMPLOYEES
 async function loadDepartments() {
   try {
     const res = await fetch('/api/departments', { headers: getAuthHeaders() });
@@ -390,7 +472,7 @@ async function submitAddEmployee() {
   }
 }
 
-// 3. EMPLOYEE PROFILE & FILE VAULT
+// 4. EMPLOYEE PROFILE & FILE VAULT
 async function viewEmployeeDetail(empId) {
   currentEmployeeId = empId;
   openModal('modal-emp-detail');
@@ -570,7 +652,7 @@ async function submitUploadDocument() {
   }
 }
 
-// 4. PAYROLL & WPS
+// 5. PAYROLL & WPS
 async function loadPayrollRuns() {
   if (currentUserRole === 'viewer') return;
   try {
@@ -700,7 +782,7 @@ async function viewPayrollDetails(runId) {
   }
 }
 
-// 5. LEAVES
+// 6. LEAVES
 async function loadLeaves() {
   try {
     const res = await fetch('/api/leaves', { headers: getAuthHeaders() });
@@ -791,7 +873,7 @@ async function updateLeaveStatus(leaveId, status) {
   }
 }
 
-// 6. SAUDI CALCULATORS
+// 7. SAUDI CALCULATORS
 async function runEosbCalc() {
   const basic = parseFloat(document.getElementById('eosb-basic').value || 0);
   const start = document.getElementById('eosb-start').value;
@@ -853,7 +935,140 @@ async function runGosiCalc() {
   }
 }
 
-// 7. SETTINGS
+// 8. SETTINGS & USERS
+async function loadUsersList() {
+  if (currentUserRole === 'viewer') return;
+  try {
+    const res = await fetch('/api/users', { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    allUsers = await res.json();
+
+    const tbody = document.getElementById('users-list-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = allUsers.map(u => `
+      <tr>
+        <td>#USR-${u.id}</td>
+        <td><strong>${u.full_name}</strong></td>
+        <td><code>${u.email}</code></td>
+        <td><span class="badge ${u.role === 'admin' ? 'badge-saudi' : (u.role === 'hr_manager' ? 'badge-active' : 'badge-expat')}">${u.role.toUpperCase()}</span></td>
+        <td>${u.created_at || 'N/A'}</td>
+        <td>
+          ${currentUserRole === 'admin' ? `
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.78rem;" onclick="openEditUserModal(${u.id}, '${u.full_name}', '${u.email}', '${u.role}')">
+              ✏️ Edit
+            </button>
+            <button class="btn btn-danger" style="padding: 2px 8px; font-size: 0.78rem;" onclick="deleteUserAccount(${u.id}, '${u.full_name}')">
+              🗑️ Delete
+            </button>
+          ` : 'Restricted'}
+        </td>
+      </tr>
+    `).join('');
+
+  } catch (err) {
+    console.error('Error loading users:', err);
+  }
+}
+
+async function submitCreateUser() {
+  const fullName = document.getElementById('new-user-fullname').value;
+  const email = document.getElementById('new-user-email').value;
+  const password = document.getElementById('new-user-password').value;
+  const role = document.getElementById('new-user-role').value;
+
+  try {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ email, password, full_name: fullName, role })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Error creating user: ${err.detail}`);
+      return;
+    }
+
+    alert(`User account created successfully for ${fullName} (${role})!`);
+    document.getElementById('create-user-form').reset();
+    loadUsersList();
+
+  } catch (err) {
+    alert(`Failed to create user account: ${err}`);
+  }
+}
+
+function openEditUserModal(userId, fullName, email, role) {
+  document.getElementById('edit-user-id').value = userId;
+  document.getElementById('edit-user-fullname').value = fullName;
+  document.getElementById('edit-user-email').value = email;
+  document.getElementById('edit-user-role').value = role;
+  document.getElementById('edit-user-password').value = '';
+  openModal('modal-edit-user');
+}
+
+async function submitEditUser() {
+  const userId = document.getElementById('edit-user-id').value;
+  const fullName = document.getElementById('edit-user-fullname').value;
+  const email = document.getElementById('edit-user-email').value;
+  const role = document.getElementById('edit-user-role').value;
+  const password = document.getElementById('edit-user-password').value;
+
+  const payload = {
+    full_name: fullName,
+    email: email,
+    role: role
+  };
+  if (password && password.trim() !== '') {
+    payload.password = password.trim();
+  }
+
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Error updating user: ${err.detail}`);
+      return;
+    }
+
+    alert(`Credentials and settings updated successfully for ${fullName}!`);
+    closeModal('modal-edit-user');
+    loadUsersList();
+
+  } catch (err) {
+    alert(`Failed to update user account: ${err}`);
+  }
+}
+
+async function deleteUserAccount(userId, fullName) {
+  if (!confirm(`Are you sure you want to delete the user account for ${fullName}? This action cannot be undone.`)) return;
+
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Delete Error: ${err.detail}`);
+      return;
+    }
+
+    alert(`User account for ${fullName} deleted successfully.`);
+    loadUsersList();
+
+  } catch (err) {
+    alert(`Failed to delete user account: ${err}`);
+  }
+}
+
 async function loadSettings() {
   if (currentUserRole === 'viewer') return;
   try {
@@ -896,7 +1111,7 @@ async function saveSettings() {
   }
 }
 
-// 8. GOOGLE DRIVE AUTOMATED BACKUP
+// 9. GOOGLE DRIVE AUTOMATED BACKUP
 async function triggerGoogleDriveBackup() {
   const banner = document.getElementById('backup-status-banner');
   if (banner) {

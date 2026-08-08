@@ -45,7 +45,21 @@ class LeaveCreate(BaseModel):
     reason: Optional[str] = None
 
 class LeaveStatusUpdate(BaseModel):
-    status: str # 'Approved', 'Rejected', 'Pending'
+    status: str
+
+class SupplierPaymentCreate(BaseModel):
+    company_name: str
+    invoice_number: Optional[str] = None
+    invoice_date: str
+    invoice_details: str
+    supply_date: str
+    amount: float
+    remarks: Optional[str] = None
+    status: Optional[str] = "Pending"
+
+class SupplierPaymentStatusUpdate(BaseModel):
+    status: str
+    payment_date: Optional[str] = None
 
 class EOSBRequest(BaseModel):
     basic_salary: float

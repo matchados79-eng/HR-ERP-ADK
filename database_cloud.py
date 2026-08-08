@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 import shutil
 import tempfile
 from typing import List, Dict, Any, Optional
@@ -16,7 +16,7 @@ def sync_from_workspace():
 
 def sync_to_workspace():
     if os.environ.get("VERCEL"):
-        return # Skip writing to read-only app root on Vercel serverless
+        return
     if os.path.exists(DB_TMP_PATH):
         try:
             shutil.copy2(DB_TMP_PATH, DB_WORKSPACE_PATH)
@@ -96,6 +96,23 @@ def init_db():
         employee_id INTEGER,
         created_at TEXT NOT NULL,
         FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
+    );
+    """)
+    
+    # Supplier Payment Tracking
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS supplier_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_name TEXT NOT NULL,
+        invoice_number TEXT,
+        invoice_date TEXT NOT NULL,
+        invoice_details TEXT,
+        supply_date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0.0,
+        status TEXT DEFAULT 'Pending',
+        payment_date TEXT,
+        remarks TEXT,
+        created_at TEXT NOT NULL
     );
     """)
     

@@ -17,7 +17,8 @@ import auth
 from google_drive_backup import generate_full_backup_archive
 from models import (
     DepartmentCreate, EmployeeCreate, LeaveCreate, LeaveStatusUpdate,
-    EOSBRequest, GOSIRequest, PayrollRunRequest
+    EOSBRequest, GOSIRequest, PayrollRunRequest,
+    SupplierPaymentCreate, SupplierPaymentStatusUpdate
 )
 from saudi_hr_engine import SaudiHREngine
 from pdf_generator import generate_payslip_pdf
@@ -28,7 +29,7 @@ db.init_db()
 app = FastAPI(
     title="Saudi HR ERP System - Production Cloud Edition",
     description="Production-grade Saudi HR & Payroll ERP System deployed on Vercel + Supabase with Auth & Google Drive Backups",
-    version="3.0.0"
+    version="3.1.0"
 )
 
 # Enable CORS for local & Vercel access
@@ -66,9 +67,15 @@ class UserCreateRequest(BaseModel):
     email: str
     password: str
     full_name: str
-    role: str = "viewer" # 'admin', 'hr_manager', 'viewer'
+    role: str = "viewer"
 
-# Strict Dependency for Authenticated Requests
+class UserUpdateRequest(BaseModel):
+    email: str
+    full_name: str
+    role: str
+    password: Optional[str] = None
+
+# Dependency for Authenticated Requests
 def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required. Please log in first.")
@@ -78,7 +85,7 @@ def get_current_user(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid or expired JWT session. Please log in again.")
     return payload
 
-# Role Checker Helper
+# Role Checker Dependency
 def require_roles(allowed_roles: List[str]):
     def role_checker(user: dict = Depends(get_current_user)):
         if user.get("role") not in allowed_roles:
@@ -142,6 +149,86 @@ def create_user_account(req: UserCreateRequest, user: dict = Depends(require_rol
     
     return {"message": f"User account for {req.full_name} ({req.role}) created successfully", "id": u_id}
 
+@app.put("/api/users/{user_id}")
+def update_user_account(user_id: int, req: UserUpdateRequest, user: dict = Depends(require_roles(["admin"]))):
+    existing = db.query_one("SELECT id FROM users WHERE id = ?", (user_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="User account not found.")
+        
+    if req.password and req.password.strip():
+        hashed_pwd = auth.hash_password(req.password.strip())
+        db.execute_cmd("""
+            UPDATE users SET email = ?, full_name = ?, role = ?, hashed_password = ? WHERE id = ?
+        """, (req.email, req.full_name, req.role, hashed_pwd, user_id))
+    else:
+        db.execute_cmd("""
+            UPDATE users SET email = ?, full_name = ?, role = ? WHERE id = ?
+        """, (req.email, req.full_name, req.role, user_id))
+        
+    return {"message": f"User credentials for {req.full_name} updated successfully"}
+
+@app.delete("/api/users/{user_id}")
+def delete_user_account(user_id: int, user: dict = Depends(require_roles(["admin"]))):
+    if user["user_id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own active administrator account.")
+        
+    db.execute_cmd("DELETE FROM users WHERE id = ?", (user_id,))
+    return {"message": "User account deleted successfully"}
+
+# --- Supplier Payment Tracking Endpoints ---
+@app.get("/api/suppliers/payments")
+def list_supplier_payments(
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    sql = "SELECT * FROM supplier_payments WHERE 1=1"
+    params = []
+    
+    if search:
+        sql += " AND (company_name LIKE ? OR invoice_number LIKE ? OR invoice_details LIKE ? OR remarks LIKE ?)"
+        pattern = f"%{search}%"
+        params.extend([pattern, pattern, pattern, pattern])
+        
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+        
+    sql += " ORDER BY id DESC"
+    return db.query_all(sql, tuple(params))
+
+@app.post("/api/suppliers/payments")
+def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    sp_id = db.execute_cmd("""
+        INSERT INTO supplier_payments (
+            company_name, invoice_number, invoice_date, invoice_details,
+            supply_date, amount, status, remarks, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        req.company_name, req.invoice_number, req.invoice_date, req.invoice_details,
+        req.supply_date, req.amount, req.status, req.remarks, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
+    return {"message": "Supplier payment record created successfully", "id": sp_id}
+
+@app.put("/api/suppliers/payments/{sp_id}/status")
+def update_supplier_payment_status(
+    sp_id: int,
+    req: SupplierPaymentStatusUpdate,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    existing = db.query_one("SELECT id FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Supplier payment record not found.")
+        
+    pay_date = req.payment_date or (date.today().strftime("%Y-%m-%d") if req.status == 'Paid' else None)
+    db.execute_cmd("UPDATE supplier_payments SET status = ?, payment_date = ? WHERE id = ?", (req.status, pay_date, sp_id))
+    return {"message": f"Supplier payment status updated to {req.status}"}
+
+@app.delete("/api/suppliers/payments/{sp_id}")
+def delete_supplier_payment(sp_id: int, user: dict = Depends(require_roles(["admin"]))):
+    db.execute_cmd("DELETE FROM supplier_payments WHERE id = ?", (sp_id,))
+    return {"message": "Supplier payment record deleted successfully"}
+
 # --- Automated Google Drive Backup Endpoint ---
 @app.post("/api/backup/google-drive")
 def trigger_google_drive_backup(user: dict = Depends(require_roles(["admin"]))):
@@ -181,12 +268,16 @@ def get_dashboard_stats(user: dict = Depends(get_current_user)):
         GROUP BY d.id
     """)
     
+    # Supplier Payment Stats
+    pending_supplier_pay = db.query_all("SELECT SUM(amount) as tot FROM supplier_payments WHERE status != 'Paid'")[0]["tot"] or 0.0
+    
     return {
         "total_employees": total_emp,
         "saudi_employees": saudi_emp,
         "expat_employees": expat_emp,
         "saudization": saudization_info,
         "total_monthly_payroll": total_payroll if user["role"] in ["admin", "hr_manager"] else 0.0,
+        "pending_supplier_payables": pending_supplier_pay if user["role"] in ["admin", "hr_manager"] else 0.0,
         "pending_leaves_count": pending_leaves,
         "expiring_alerts_count": len(alerts),
         "alerts_summary": alerts[:5],
@@ -248,7 +339,6 @@ def list_employees(
     sql += " ORDER BY e.id DESC"
     results = db.query_all(sql, tuple(params))
     
-    # Hide salary details if user is 'viewer'
     if user["role"] == "viewer":
         for r in results:
             r["basic_salary"] = 0.0
@@ -295,7 +385,6 @@ def get_employee_detail(emp_id: int, user: dict = Depends(get_current_user)):
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found.")
         
-    # Redact salary for viewer
     if user["role"] == "viewer":
         emp["basic_salary"] = 0.0
         emp["housing_allowance"] = 0.0
