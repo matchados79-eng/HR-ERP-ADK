@@ -1,7 +1,8 @@
-/* Saudi HR ERP System - Main JavaScript Application with Authentication */
+/* Saudi HR ERP System - Main JavaScript Application with User Creation & Role Permissions */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
+let currentUserRole = 'admin';
 let allDepartments = [];
 let allEmployees = [];
 
@@ -11,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   runGosiCalc();
 });
 
-// Authentication Handlers
+// Authentication & Role Handlers
 function checkAuthSession() {
   const token = localStorage.getItem('jwt_token');
   const userJson = localStorage.getItem('jwt_user');
@@ -24,11 +25,13 @@ function checkAuthSession() {
   if (userJson) {
     try {
       const u = JSON.parse(userJson);
-      document.getElementById('user-display-name').innerText = u.full_name || 'System Administrator';
-      document.getElementById('user-display-role').innerText = `Role: ${u.role || 'Admin'} • Active JWT Session`;
+      currentUserRole = u.role || 'viewer';
+      document.getElementById('user-display-name').innerText = u.full_name || 'System User';
+      document.getElementById('user-display-role').innerText = `Role: ${currentUserRole.toUpperCase()} • Active Session`;
     } catch (e) {}
   }
 
+  applyRoleUIRestrictions();
   hideLoginModal();
   loadDashboardData();
   loadDepartments();
@@ -36,6 +39,36 @@ function checkAuthSession() {
   loadPayrollRuns();
   loadLeaves();
   loadSettings();
+  loadUsersList();
+}
+
+function applyRoleUIRestrictions() {
+  // If user is 'viewer' (Directory Only / Restricted)
+  if (currentUserRole === 'viewer') {
+    const addEmpBtn = document.getElementById('add-emp-btn');
+    if (addEmpBtn) addEmpBtn.style.display = 'none';
+
+    const payrollNav = document.getElementById('nav-payroll-item');
+    if (payrollNav) payrollNav.style.display = 'none';
+
+    const backupBtn = document.getElementById('gdrive-backup-btn');
+    if (backupBtn) backupBtn.style.display = 'none';
+
+    const settingsNav = document.getElementById('nav-settings-item');
+    if (settingsNav) settingsNav.style.display = 'none';
+  } else {
+    const addEmpBtn = document.getElementById('add-emp-btn');
+    if (addEmpBtn) addEmpBtn.style.display = 'inline-flex';
+
+    const payrollNav = document.getElementById('nav-payroll-item');
+    if (payrollNav) payrollNav.style.display = 'block';
+
+    const backupBtn = document.getElementById('gdrive-backup-btn');
+    if (backupBtn) backupBtn.style.display = 'inline-flex';
+
+    const settingsNav = document.getElementById('nav-settings-item');
+    if (settingsNav) settingsNav.style.display = 'block';
+  }
 }
 
 function showLoginModal() {
@@ -76,7 +109,7 @@ async function submitLogin() {
     localStorage.setItem('jwt_user', JSON.stringify(data.user));
 
     checkAuthSession();
-    alert(`Welcome, ${data.user.full_name}! Login successful.`);
+    alert(`Welcome, ${data.user.full_name}! Signed in successfully.`);
 
   } catch (err) {
     if (errBox) {
@@ -100,6 +133,60 @@ function getAuthHeaders() {
   };
 }
 
+// User Accounts Management
+async function loadUsersList() {
+  if (currentUserRole === 'viewer') return;
+  try {
+    const res = await fetch('/api/users', { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const users = await res.json();
+
+    const tbody = document.getElementById('users-list-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td>#USR-${u.id}</td>
+        <td><strong>${u.full_name}</strong></td>
+        <td><code>${u.email}</code></td>
+        <td><span class="badge ${u.role === 'admin' ? 'badge-saudi' : (u.role === 'hr_manager' ? 'badge-active' : 'badge-expat')}">${u.role.toUpperCase()}</span></td>
+        <td>${u.created_at || 'N/A'}</td>
+      </tr>
+    `).join('');
+
+  } catch (err) {
+    console.error('Error loading users:', err);
+  }
+}
+
+async function submitCreateUser() {
+  const fullName = document.getElementById('new-user-fullname').value;
+  const email = document.getElementById('new-user-email').value;
+  const password = document.getElementById('new-user-password').value;
+  const role = document.getElementById('new-user-role').value;
+
+  try {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ email, password, full_name: fullName, role })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Error creating user: ${err.detail}`);
+      return;
+    }
+
+    alert(`User account created successfully for ${fullName} (${role})!`);
+    document.getElementById('create-user-form').reset();
+    loadUsersList();
+
+  } catch (err) {
+    alert(`Failed to create user account: ${err}`);
+  }
+}
+
 // Navigation Switching
 function switchSection(sectionId) {
   document.querySelectorAll('.content-section').forEach(sec => sec.classList.remove('active'));
@@ -116,7 +203,7 @@ function switchSection(sectionId) {
     'payroll': ['Payroll & WPS Engine', 'Process monthly salaries, generate SAMA WPS CSV files, and print PDF payslips'],
     'leaves': ['Leave Management', 'Track annual leave balances, sick leave requests, and approval workflows'],
     'compliance': ['Saudi Compliance Hub', 'Interactive EOSB (Articles 84/85), GOSI contributions, and Nitaqat tools'],
-    'settings': ['System Settings & Backups', 'Configure company legal details, CR number, and Google Drive Backups']
+    'settings': ['System & Users Settings', 'Configure company legal details, CR number, and Google Drive Backups']
   };
 
   if (titleMap[sectionId]) {
@@ -128,6 +215,7 @@ function switchSection(sectionId) {
   if (sectionId === 'employees') loadEmployees();
   if (sectionId === 'payroll') loadPayrollRuns();
   if (sectionId === 'leaves') loadLeaves();
+  if (sectionId === 'settings') loadUsersList();
 }
 
 // Modal Helpers
@@ -246,7 +334,7 @@ async function loadEmployees() {
         <td>${e.nationality}</td>
         <td>${e.department_name || 'Unassigned'}</td>
         <td>${e.designation}</td>
-        <td>SAR ${e.basic_salary.toLocaleString('en-US')}</td>
+        <td>SAR ${e.basic_salary ? e.basic_salary.toLocaleString('en-US') : '***'}</td>
         <td>
           <span class="badge ${e.is_saudi ? 'badge-saudi' : 'badge-expat'}">
             ${e.is_saudi ? 'Saudi Citizen' : 'Expat'}
@@ -254,7 +342,7 @@ async function loadEmployees() {
         </td>
         <td>
           <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.8rem;" onclick="viewEmployeeDetail(${e.id})">
-            View / Edit
+            View Details
           </button>
         </td>
       </tr>
@@ -338,9 +426,9 @@ async function viewEmployeeDetail(empId) {
       <div class="form-group"><label>Email:</label><input type="text" class="form-control" value="${emp.email}" readonly></div>
       <div class="form-group"><label>Phone:</label><input type="text" class="form-control" value="${emp.phone || ''}" readonly></div>
       <div class="form-group"><label>Hire Date:</label><input type="text" class="form-control" value="${emp.hire_date}" readonly></div>
-      <div class="form-group"><label>Basic Salary:</label><input type="text" class="form-control" value="SAR ${emp.basic_salary.toLocaleString()}" readonly></div>
-      <div class="form-group"><label>Housing Allowance:</label><input type="text" class="form-control" value="SAR ${emp.housing_allowance.toLocaleString()}" readonly></div>
-      <div class="form-group"><label>Transport Allowance:</label><input type="text" class="form-control" value="SAR ${emp.transport_allowance.toLocaleString()}" readonly></div>
+      <div class="form-group"><label>Basic Salary:</label><input type="text" class="form-control" value="${emp.basic_salary ? 'SAR ' + emp.basic_salary.toLocaleString() : 'Restricted (Viewer)'}" readonly></div>
+      <div class="form-group"><label>Housing Allowance:</label><input type="text" class="form-control" value="${emp.housing_allowance ? 'SAR ' + emp.housing_allowance.toLocaleString() : 'Restricted (Viewer)'}" readonly></div>
+      <div class="form-group"><label>Transport Allowance:</label><input type="text" class="form-control" value="${emp.transport_allowance ? 'SAR ' + emp.transport_allowance.toLocaleString() : 'Restricted (Viewer)'}" readonly></div>
       <div class="form-group"><label>Bank & IBAN:</label><input type="text" class="form-control" value="${emp.bank_name || ''} - ${emp.iban || ''}" readonly></div>
       <div class="form-group"><label>Iqama Expiry Date:</label><input type="text" class="form-control" value="${emp.iqama_expiry_date || 'N/A'}" readonly></div>
       <div class="form-group"><label>Passport Number & Expiry:</label><input type="text" class="form-control" value="${emp.passport_number || ''} (Expires: ${emp.passport_expiry_date || 'N/A'})" readonly></div>
@@ -484,11 +572,15 @@ async function submitUploadDocument() {
 
 // 4. PAYROLL & WPS
 async function loadPayrollRuns() {
+  if (currentUserRole === 'viewer') return;
   try {
     const res = await fetch('/api/payroll/runs', { headers: getAuthHeaders() });
+    if (!res.ok) return;
     const runs = await res.json();
 
     const tbody = document.getElementById('payroll-runs-body');
+    if (!tbody) return;
+
     if (runs.length === 0) {
       tbody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No payroll runs executed yet.</td></tr>`;
       return;
@@ -631,10 +723,10 @@ async function loadLeaves() {
         <td>${l.reason || 'N/A'}</td>
         <td><span class="badge ${l.status === 'Approved' ? 'badge-active' : (l.status === 'Pending' ? 'badge-pending' : 'badge-critical')}">${l.status}</span></td>
         <td>
-          ${l.status === 'Pending' ? `
+          ${(l.status === 'Pending' && currentUserRole !== 'viewer') ? `
             <button class="btn btn-success" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateLeaveStatus(${l.id}, 'Approved')">Approve</button>
             <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateLeaveStatus(${l.id}, 'Rejected')">Reject</button>
-          ` : 'Processed'}
+          ` : l.status}
         </td>
       </tr>
     `).join('');
@@ -763,8 +855,10 @@ async function runGosiCalc() {
 
 // 7. SETTINGS
 async function loadSettings() {
+  if (currentUserRole === 'viewer') return;
   try {
     const res = await fetch('/api/settings', { headers: getAuthHeaders() });
+    if (!res.ok) return;
     const settings = await res.json();
 
     if (settings.company_name) document.getElementById('set-company-name').value = settings.company_name;

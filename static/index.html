@@ -23,12 +23,12 @@
         <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
           <div class="form-group">
             <label style="font-weight: 700;">Account Email Address *</label>
-            <input type="email" id="login-email" class="form-control" required value="admin@alamal-ksa.com" placeholder="user@alamal-ksa.com">
+            <input type="email" id="login-email" class="form-control" required placeholder="user@alamal-ksa.com">
           </div>
           
           <div class="form-group">
             <label style="font-weight: 700;">Password *</label>
-            <input type="password" id="login-password" class="form-control" required value="AdminSecret123!" placeholder="••••••••">
+            <input type="password" id="login-password" class="form-control" required placeholder="••••••••">
           </div>
           
           <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; justify-content: center;">
@@ -37,7 +37,7 @@
         </form>
 
         <div style="background: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 0.78rem; color: #475569;">
-          <strong>Default Admin Credentials:</strong><br/>
+          <strong>Default Admin Account Credentials:</strong><br/>
           • Email: <code>admin@alamal-ksa.com</code><br/>
           • Password: <code>AdminSecret123!</code>
         </div>
@@ -66,7 +66,7 @@
           <span class="nav-icon">👥</span> Employees Directory
         </a>
       </li>
-      <li class="nav-item">
+      <li class="nav-item" id="nav-payroll-item">
         <a class="nav-link" onclick="switchSection('payroll')">
           <span class="nav-icon">💵</span> Payroll & WPS Engine
         </a>
@@ -81,9 +81,9 @@
           <span class="nav-icon">⚖️</span> Saudi Compliance Hub
         </a>
       </li>
-      <li class="nav-item">
+      <li class="nav-item" id="nav-settings-item">
         <a class="nav-link" onclick="switchSection('settings')">
-          <span class="nav-icon">⚙️</span> System & Backup Settings
+          <span class="nav-icon">⚙️</span> System & Users Settings
         </a>
       </li>
     </ul>
@@ -104,14 +104,14 @@
         <p id="page-subheading">Comprehensive overview of Saudi workforce, Saudization rates, and pending actions</p>
       </div>
       <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-        <button class="btn btn-success" onclick="triggerGoogleDriveBackup()" style="box-shadow: var(--shadow-sm);">
+        <button class="btn btn-success" id="gdrive-backup-btn" onclick="triggerGoogleDriveBackup()" style="box-shadow: var(--shadow-sm);">
           ☁️ Backup to Google Drive
         </button>
         <div class="user-profile-badge">
           <span style="font-size: 1.2rem;">🇸🇦</span>
           <div>
             <strong style="font-size: 0.9rem;" id="user-display-name">System Administrator</strong>
-            <div style="font-size: 0.75rem; color: var(--text-muted);" id="user-display-role">Role: Admin • Active JWT Session</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);" id="user-display-role">Role: Admin • Active Session</div>
           </div>
         </div>
         <button class="btn btn-danger" onclick="logoutUser()" style="padding: 8px 12px; font-size: 0.82rem;">
@@ -225,7 +225,7 @@
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Employee Directory</h3>
-          <button class="btn btn-primary" onclick="openAddEmployeeModal()">+ Add New Employee</button>
+          <button class="btn btn-primary" id="add-emp-btn" onclick="openAddEmployeeModal()">+ Add New Employee</button>
         </div>
 
         <!-- Filters Bar -->
@@ -425,8 +425,63 @@
       </div>
     </section>
 
-    <!-- SECTION 6: SETTINGS & BACKUPS -->
+    <!-- SECTION 6: SETTINGS & USER ACCOUNTS -->
     <section id="section-settings" class="content-section">
+      <!-- Create Sub-Accounts Card -->
+      <div class="card" style="margin-bottom: 20px; border-color: #BFDBFE;">
+        <div class="card-header">
+          <h3 class="card-title">👤 User Account Creation & Role Permissions</h3>
+        </div>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 15px;">
+          Create accounts for staff members and assign roles (e.g. <strong>Viewer / Directory Only</strong> can view employees without salary details or admin access).
+        </p>
+
+        <form id="create-user-form" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px;" onsubmit="event.preventDefault(); submitCreateUser();">
+          <div style="flex: 1 1 200px;">
+            <label style="font-size: 0.8rem; font-weight: 600;">Full Name *</label>
+            <input type="text" id="new-user-fullname" class="form-control" required placeholder="Staff Member Name">
+          </div>
+          <div style="flex: 1 1 200px;">
+            <label style="font-size: 0.8rem; font-weight: 600;">Email Address *</label>
+            <input type="email" id="new-user-email" class="form-control" required placeholder="staff@alamal-ksa.com">
+          </div>
+          <div style="flex: 1 1 150px;">
+            <label style="font-size: 0.8rem; font-weight: 600;">Password *</label>
+            <input type="password" id="new-user-password" class="form-control" required placeholder="••••••••">
+          </div>
+          <div style="flex: 1 1 180px;">
+            <label style="font-size: 0.8rem; font-weight: 600;">Account Role *</label>
+            <select id="new-user-role" class="form-control" required>
+              <option value="viewer">Viewer (Directory Only / Restricted)</option>
+              <option value="hr_manager">HR Manager (Directory + Payroll + Leaves)</option>
+              <option value="admin">Administrator (Full Access)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">
+            + Create Account
+          </button>
+        </form>
+
+        <h4 style="margin-bottom: 10px; color: var(--primary-dark);">Existing User Accounts</h4>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Full Name</th>
+                <th>Email Address</th>
+                <th>Role Permission</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody id="users-list-body">
+              <tr><td colspan="5" style="text-align: center;">Loading user accounts...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Google Drive Backup Engine Card -->
       <div class="card" style="margin-bottom: 20px; background: #ECFDF5; border-color: #A7F3D0;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
           <div>
@@ -440,6 +495,7 @@
         <div id="backup-status-banner" style="margin-top: 12px; display: none; padding: 10px; background: #FFFFFF; border-radius: 6px; border: 1px solid #6EE7B7; font-size: 0.85rem;"></div>
       </div>
 
+      <!-- Company Settings Card -->
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Company & HR System Settings</h3>
@@ -594,7 +650,7 @@
               <span id="detail-emp-status-badge" class="badge">--</span>
             </div>
           </div>
-          <div>
+          <div id="photo-upload-container">
             <label class="btn btn-outline" style="cursor: pointer;">
               📷 Upload Photo
               <input type="file" id="photo-upload-input" style="display: none;" accept="image/*" onchange="uploadEmployeePhoto()">
@@ -624,7 +680,7 @@
 
         <!-- TAB 3: DOCUMENTS & UPLOADS -->
         <div id="tab-docs" class="tab-content">
-          <div style="background: #F1F5F9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          <div id="doc-upload-box" style="background: #F1F5F9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h4 style="margin-bottom: 10px; color: var(--primary-dark);">Upload New Document (Iqama, Passport, Contract)</h4>
             <form id="doc-upload-form" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
               <div>

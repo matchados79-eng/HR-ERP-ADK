@@ -62,15 +62,29 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-# Helper dependency to verify JWT token
+class UserCreateRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    role: str = "viewer" # 'admin', 'hr_manager', 'viewer'
+
+# Strict Dependency for Authenticated Requests
 def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        return {"user_id": 1, "email": "admin@alamal-ksa.com", "role": "admin", "full_name": "System Admin"}
+        raise HTTPException(status_code=401, detail="Authentication required. Please log in first.")
     token = authorization.split(" ")[1]
     payload = auth.verify_jwt_token(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired JWT token.")
+        raise HTTPException(status_code=401, detail="Invalid or expired JWT session. Please log in again.")
     return payload
+
+# Role Checker Helper
+def require_roles(allowed_roles: List[str]):
+    def role_checker(user: dict = Depends(get_current_user)):
+        if user.get("role") not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Permission denied. Your role does not have access to this feature.")
+        return user
+    return role_checker
 
 # --- UI Route ---
 @app.get("/", response_class=HTMLResponse)
@@ -81,7 +95,7 @@ def read_root():
             return f.read()
     return "<h1>Saudi HR ERP System Production Running</h1>"
 
-# --- Authentication Endpoints ---
+# --- Authentication & User Management Endpoints ---
 @app.post("/api/auth/login")
 def login(req: LoginRequest):
     user = db.query_one("SELECT * FROM users WHERE email = ?", (req.email,))
@@ -110,12 +124,27 @@ def login(req: LoginRequest):
 def get_me(user: dict = Depends(get_current_user)):
     return user
 
+@app.get("/api/users")
+def list_users(user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    return db.query_all("SELECT id, email, full_name, role, created_at FROM users ORDER BY id DESC")
+
+@app.post("/api/users")
+def create_user_account(req: UserCreateRequest, user: dict = Depends(require_roles(["admin"]))):
+    existing = db.query_one("SELECT id FROM users WHERE email = ?", (req.email,))
+    if existing:
+        raise HTTPException(status_code=400, detail="User account with this email already exists.")
+        
+    hashed_pwd = auth.hash_password(req.password)
+    u_id = db.execute_cmd("""
+        INSERT INTO users (email, hashed_password, full_name, role, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (req.email, hashed_pwd, req.full_name, req.role, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    
+    return {"message": f"User account for {req.full_name} ({req.role}) created successfully", "id": u_id}
+
 # --- Automated Google Drive Backup Endpoint ---
 @app.post("/api/backup/google-drive")
-def trigger_google_drive_backup(user: dict = Depends(get_current_user)):
-    if user.get("role") not in ["admin", "hr_manager"]:
-        raise HTTPException(status_code=403, detail="Permission denied. Admin role required for Google Drive Backups.")
-        
+def trigger_google_drive_backup(user: dict = Depends(require_roles(["admin"]))):
     try:
         backup_zip_path = generate_full_backup_archive()
         filename = os.path.basename(backup_zip_path)
@@ -134,7 +163,7 @@ def trigger_google_drive_backup(user: dict = Depends(get_current_user)):
 
 # --- Dashboard Overview Endpoint ---
 @app.get("/api/dashboard/stats")
-def get_dashboard_stats():
+def get_dashboard_stats(user: dict = Depends(get_current_user)):
     employees = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
     total_emp = len(employees)
     saudi_emp = sum(1 for e in employees if e["is_saudi"] == 1)
@@ -157,7 +186,7 @@ def get_dashboard_stats():
         "saudi_employees": saudi_emp,
         "expat_employees": expat_emp,
         "saudization": saudization_info,
-        "total_monthly_payroll": total_payroll,
+        "total_monthly_payroll": total_payroll if user["role"] in ["admin", "hr_manager"] else 0.0,
         "pending_leaves_count": pending_leaves,
         "expiring_alerts_count": len(alerts),
         "alerts_summary": alerts[:5],
@@ -166,7 +195,7 @@ def get_dashboard_stats():
 
 # --- Departments Endpoints ---
 @app.get("/api/departments")
-def get_departments():
+def get_departments(user: dict = Depends(get_current_user)):
     return db.query_all("""
         SELECT d.*, COUNT(e.id) as employee_count 
         FROM departments d 
@@ -175,7 +204,7 @@ def get_departments():
     """)
 
 @app.post("/api/departments")
-def create_department(dept: DepartmentCreate):
+def create_department(dept: DepartmentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     d_id = db.execute_cmd(
         "INSERT INTO departments (name, code, manager_name, budget) VALUES (?, ?, ?, ?)",
         (dept.name, dept.code, dept.manager_name, dept.budget)
@@ -188,7 +217,8 @@ def list_employees(
     search: Optional[str] = None,
     department_id: Optional[int] = None,
     is_saudi: Optional[int] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    user: dict = Depends(get_current_user)
 ):
     sql = """
         SELECT e.*, d.name as department_name 
@@ -216,10 +246,20 @@ def list_employees(
         params.append(status)
         
     sql += " ORDER BY e.id DESC"
-    return db.query_all(sql, tuple(params))
+    results = db.query_all(sql, tuple(params))
+    
+    # Hide salary details if user is 'viewer'
+    if user["role"] == "viewer":
+        for r in results:
+            r["basic_salary"] = 0.0
+            r["housing_allowance"] = 0.0
+            r["transport_allowance"] = 0.0
+            r["other_allowances"] = 0.0
+            
+    return results
 
 @app.post("/api/employees")
-def create_employee(emp: EmployeeCreate):
+def create_employee(emp: EmployeeCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     existing = db.query_one("SELECT id FROM employees WHERE emp_code = ? OR national_id_iqama = ?", (emp.emp_code, emp.national_id_iqama))
     if existing:
         raise HTTPException(status_code=400, detail="Employee Code or Iqama/National ID already exists.")
@@ -244,7 +284,7 @@ def create_employee(emp: EmployeeCreate):
     return {"message": "Employee created successfully", "id": e_id}
 
 @app.get("/api/employees/{emp_id}")
-def get_employee_detail(emp_id: int):
+def get_employee_detail(emp_id: int, user: dict = Depends(get_current_user)):
     emp = db.query_one("""
         SELECT e.*, d.name as department_name 
         FROM employees e 
@@ -255,6 +295,13 @@ def get_employee_detail(emp_id: int):
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found.")
         
+    # Redact salary for viewer
+    if user["role"] == "viewer":
+        emp["basic_salary"] = 0.0
+        emp["housing_allowance"] = 0.0
+        emp["transport_allowance"] = 0.0
+        emp["other_allowances"] = 0.0
+        
     documents = db.query_all("SELECT * FROM documents WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
     leaves = db.query_all("SELECT * FROM leaves WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
     payroll_history = db.query_all("""
@@ -263,7 +310,7 @@ def get_employee_detail(emp_id: int):
         JOIN payroll_runs pr ON pd.payroll_run_id = pr.id 
         WHERE pd.employee_id = ? 
         ORDER BY pr.id DESC
-    """, (emp_id,))
+    """, (emp_id,)) if user["role"] in ["admin", "hr_manager"] else []
     
     gosi_info = SaudiHREngine.calculate_gosi(
         emp["is_saudi"] == 1,
@@ -280,7 +327,7 @@ def get_employee_detail(emp_id: int):
     }
 
 @app.put("/api/employees/{emp_id}")
-def update_employee(emp_id: int, emp: EmployeeCreate):
+def update_employee(emp_id: int, emp: EmployeeCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     existing = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
     if not existing:
         raise HTTPException(status_code=404, detail="Employee not found.")
@@ -323,7 +370,7 @@ def update_employee(emp_id: int, emp: EmployeeCreate):
 
 # --- Image Upload Endpoint ---
 @app.post("/api/employees/{emp_id}/photo")
-async def upload_employee_photo(emp_id: int, file: UploadFile = File(...)):
+async def upload_employee_photo(emp_id: int, file: UploadFile = File(...), user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found.")
@@ -360,7 +407,8 @@ async def upload_employee_document(
     doc_type: str = Form(...),
     notes: Optional[str] = Form(None),
     expiry_date: Optional[str] = Form(None),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
 ):
     emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
     if not emp:
@@ -386,7 +434,7 @@ async def upload_employee_document(
     return {"message": "Document uploaded successfully", "document_id": doc_id, "file_name": file.filename}
 
 @app.get("/api/documents/{doc_id}/download")
-def download_document(doc_id: int):
+def download_document(doc_id: int, user: dict = Depends(get_current_user)):
     doc = db.query_one("SELECT * FROM documents WHERE id = ?", (doc_id,))
     if not doc:
         raise HTTPException(status_code=404, detail="Document record not found.")
@@ -399,11 +447,11 @@ def download_document(doc_id: int):
 
 # --- Payroll Endpoints ---
 @app.get("/api/payroll/runs")
-def get_payroll_runs():
+def get_payroll_runs(user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     return db.query_all("SELECT * FROM payroll_runs ORDER BY id DESC")
 
 @app.post("/api/payroll/generate")
-def generate_monthly_payroll(req: PayrollRunRequest):
+def generate_monthly_payroll(req: PayrollRunRequest, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     existing = db.query_one("SELECT id FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (req.month, req.year))
     if existing:
         raise HTTPException(status_code=400, detail=f"Payroll for {req.month}/{req.year} has already been processed.")
@@ -459,7 +507,7 @@ def generate_monthly_payroll(req: PayrollRunRequest):
     return {"message": "Payroll generated and approved successfully", "payroll_run_id": run_id}
 
 @app.get("/api/payroll/runs/{run_id}/details")
-def get_payroll_run_details(run_id: int):
+def get_payroll_run_details(run_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     run = db.query_one("SELECT * FROM payroll_runs WHERE id = ?", (run_id,))
     if not run:
         raise HTTPException(status_code=404, detail="Payroll run not found.")
@@ -475,7 +523,7 @@ def get_payroll_run_details(run_id: int):
     return {"run": run, "details": items}
 
 @app.get("/api/payroll/details/{detail_id}/payslip.pdf")
-def download_payslip_pdf(detail_id: int):
+def download_payslip_pdf(detail_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     detail = db.query_one("SELECT pd.*, pr.payroll_month, pr.payroll_year FROM payroll_details pd JOIN payroll_runs pr ON pd.payroll_run_id = pr.id WHERE pd.id = ?", (detail_id,))
     if not detail:
         raise HTTPException(status_code=404, detail="Payroll detail item not found.")
@@ -505,7 +553,7 @@ def download_payslip_pdf(detail_id: int):
     return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={filename}"})
 
 @app.get("/api/payroll/runs/{run_id}/wps.csv")
-def download_wps_file(run_id: int):
+def download_wps_file(run_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     run = db.query_one("SELECT * FROM payroll_runs WHERE id = ?", (run_id,))
     if not run:
         raise HTTPException(status_code=404, detail="Payroll run not found.")
@@ -548,7 +596,7 @@ def download_wps_file(run_id: int):
 
 # --- Leave Management Endpoints ---
 @app.get("/api/leaves")
-def get_leaves():
+def get_leaves(user: dict = Depends(get_current_user)):
     return db.query_all("""
         SELECT l.*, e.emp_code, e.first_name, e.last_name, d.name as department_name
         FROM leaves l
@@ -558,7 +606,7 @@ def get_leaves():
     """)
 
 @app.post("/api/leaves")
-def apply_leave(req: LeaveCreate):
+def apply_leave(req: LeaveCreate, user: dict = Depends(get_current_user)):
     emp = db.query_one("SELECT id FROM employees WHERE id = ?", (req.employee_id,))
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found.")
@@ -571,13 +619,13 @@ def apply_leave(req: LeaveCreate):
     return {"message": "Leave application submitted successfully", "id": l_id}
 
 @app.put("/api/leaves/{leave_id}/status")
-def update_leave_status(leave_id: int, body: LeaveStatusUpdate):
+def update_leave_status(leave_id: int, body: LeaveStatusUpdate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     db.execute_cmd("UPDATE leaves SET status = ? WHERE id = ?", (body.status, leave_id))
     return {"message": f"Leave status updated to {body.status}"}
 
 # --- Saudi Compliance Calculators ---
 @app.post("/api/calculators/eosb")
-def calculate_eosb_api(req: EOSBRequest):
+def calculate_eosb_api(req: EOSBRequest, user: dict = Depends(get_current_user)):
     return SaudiHREngine.calculate_eosb(
         req.basic_salary,
         req.gross_salary,
@@ -587,7 +635,7 @@ def calculate_eosb_api(req: EOSBRequest):
     )
 
 @app.post("/api/calculators/gosi")
-def calculate_gosi_api(req: GOSIRequest):
+def calculate_gosi_api(req: GOSIRequest, user: dict = Depends(get_current_user)):
     return SaudiHREngine.calculate_gosi(
         req.is_saudi,
         req.basic_salary,
@@ -595,18 +643,18 @@ def calculate_gosi_api(req: GOSIRequest):
     )
 
 @app.get("/api/alerts/expiries")
-def get_document_expiry_alerts():
+def get_document_expiry_alerts(user: dict = Depends(get_current_user)):
     employees = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
     return SaudiHREngine.check_expiries(employees, threshold_days=90)
 
 # --- Settings ---
 @app.get("/api/settings")
-def get_settings():
+def get_settings(user: dict = Depends(get_current_user)):
     rows = db.query_all("SELECT * FROM settings")
     return {r["key"]: r["value"] for r in rows}
 
 @app.post("/api/settings")
-def update_settings(settings_dict: dict):
+def update_settings(settings_dict: dict, user: dict = Depends(require_roles(["admin"]))):
     for k, v in settings_dict.items():
         db.execute_cmd("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
     return {"message": "Settings updated successfully"}
