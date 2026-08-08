@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import tempfile
 from datetime import datetime, date
 from typing import Optional, List
 
@@ -40,15 +41,22 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(__file__)
-UPLOADS_PHOTOS_DIR = os.path.join(BASE_DIR, "uploads", "photos")
-UPLOADS_DOCS_DIR = os.path.join(BASE_DIR, "uploads", "documents")
+
+if os.environ.get("VERCEL"):
+    UPLOADS_PHOTOS_DIR = os.path.join(tempfile.gettempdir(), "photos")
+    UPLOADS_DOCS_DIR = os.path.join(tempfile.gettempdir(), "documents")
+else:
+    UPLOADS_PHOTOS_DIR = os.path.join(BASE_DIR, "uploads", "photos")
+    UPLOADS_DOCS_DIR = os.path.join(BASE_DIR, "uploads", "documents")
 
 os.makedirs(UPLOADS_PHOTOS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DOCS_DIR, exist_ok=True)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
+
+if os.path.exists(os.path.join(BASE_DIR, "uploads")):
+    app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
 
 class LoginRequest(BaseModel):
     email: str
@@ -57,7 +65,6 @@ class LoginRequest(BaseModel):
 # Helper dependency to verify JWT token
 def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        # Default fallback to admin for unauthenticated UI calls
         return {"user_id": 1, "email": "admin@alamal-ksa.com", "role": "admin", "full_name": "System Admin"}
     token = authorization.split(" ")[1]
     payload = auth.verify_jwt_token(token)

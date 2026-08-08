@@ -1,5 +1,5 @@
-import os
 import sqlite3
+import os
 import shutil
 import tempfile
 from typing import List, Dict, Any, Optional
@@ -15,6 +15,8 @@ def sync_from_workspace():
             print(f"Warning syncing DB from workspace: {e}")
 
 def sync_to_workspace():
+    if os.environ.get("VERCEL"):
+        return # Skip writing to read-only app root on Vercel serverless
     if os.path.exists(DB_TMP_PATH):
         try:
             shutil.copy2(DB_TMP_PATH, DB_WORKSPACE_PATH)
@@ -83,7 +85,7 @@ def init_db():
     );
     """)
     
-    # Users for Authentication & Role-Based Access Control
+    # Users for Authentication
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +189,7 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (k, v))
         
-    # Default Admin User (Password: AdminSecret123!)
+    # Default Admin User
     from auth import hash_password
     default_admin_hash = hash_password("AdminSecret123!")
     cursor.execute("""
