@@ -1,4 +1,4 @@
-/* Saudi HR ERP System - Main JavaScript Application with Supplier Payment Tracking */
+/* Saudi HR ERP System - Main JavaScript Application with Supplier Disbursal Ledger & PDF Export */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
@@ -41,6 +41,7 @@ function checkAuthSession() {
   loadPayrollRuns();
   loadLeaves();
   loadSupplierPayments();
+  loadFinanceAnalytics();
   loadSettings();
   loadUsersList();
 }
@@ -56,6 +57,9 @@ function applyRoleUIRestrictions() {
     const backupBtn = document.getElementById('gdrive-backup-btn');
     if (backupBtn) backupBtn.style.display = 'none';
 
+    const financeNav = document.getElementById('nav-finance-item');
+    if (financeNav) financeNav.style.display = 'none';
+
     const settingsNav = document.getElementById('nav-settings-item');
     if (settingsNav) settingsNav.style.display = 'none';
   } else {
@@ -67,6 +71,9 @@ function applyRoleUIRestrictions() {
 
     const backupBtn = document.getElementById('gdrive-backup-btn');
     if (backupBtn) backupBtn.style.display = 'inline-flex';
+
+    const financeNav = document.getElementById('nav-finance-item');
+    if (financeNav) financeNav.style.display = 'block';
 
     const settingsNav = document.getElementById('nav-settings-item');
     if (settingsNav) settingsNav.style.display = 'block';
@@ -151,7 +158,8 @@ function switchSection(sectionId) {
     'payroll': ['Payroll & WPS Engine', 'Process monthly salaries, generate SAMA WPS CSV files, and print PDF payslips'],
     'leaves': ['Leave Management', 'Track annual leave balances, sick leave requests, and approval workflows'],
     'compliance': ['Saudi Compliance Hub', 'Interactive EOSB (Articles 84/85), GOSI contributions, and Nitaqat tools'],
-    'suppliers': ['Supplier Payment Tracking', 'Track vendor invoices, supply dates, payment statuses, and remarks'],
+    'suppliers': ['Supplier Payment Tracking', 'Track vendor invoices, supply dates, due dates, partial payments, and PDF statements'],
+    'finance': ['Finance & Aging Analytics', 'Accounts Payable aging schedules, vendor liabilities, and cash outflow forecasting'],
     'settings': ['System & Users Settings', 'Configure company legal details, CR number, and Google Drive Backups']
   };
 
@@ -165,6 +173,7 @@ function switchSection(sectionId) {
   if (sectionId === 'payroll') loadPayrollRuns();
   if (sectionId === 'leaves') loadLeaves();
   if (sectionId === 'suppliers') loadSupplierPayments();
+  if (sectionId === 'finance') loadFinanceAnalytics();
   if (sectionId === 'settings') loadUsersList();
 }
 
@@ -188,7 +197,7 @@ async function loadDashboardData() {
     document.getElementById('stat-total-emp').innerText = data.total_employees;
     document.getElementById('stat-saudization-pct').innerText = `${data.saudization.saudization_percentage}%`;
     document.getElementById('stat-monthly-payroll').innerText = `SAR ${data.total_monthly_payroll.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    document.getElementById('stat-pending-leaves').innerText = data.pending_leaves_count;
+    document.getElementById('stat-pending-payables').innerText = `SAR ${data.pending_supplier_payables.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
 
     // Nitaqat Banner
     const nb = document.getElementById('nitaqat-banner');
@@ -228,7 +237,7 @@ async function loadDashboardData() {
   }
 }
 
-// 2. SUPPLIER PAYMENT TRACKING
+// 2. SUPPLIER PAYMENT TRACKING & AUTO-ADJUSTING BALANCES
 async function loadSupplierPayments() {
   try {
     const search = document.getElementById('supplier-search') ? document.getElementById('supplier-search').value : '';
@@ -245,40 +254,47 @@ async function loadSupplierPayments() {
     if (!tbody) return;
 
     if (allSupplierPayments.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center;">No supplier payment records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">No supplier payment records found.</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = allSupplierPayments.map(sp => `
-      <tr>
-        <td>#INV-${sp.id}</td>
-        <td><strong>${sp.company_name}</strong></td>
-        <td><code>${sp.invoice_number || 'N/A'}</code></td>
-        <td>${sp.invoice_date}</td>
-        <td>${sp.invoice_details || 'N/A'}</td>
-        <td>${sp.supply_date}</td>
-        <td><strong style="color: var(--primary);">SAR ${sp.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
-        <td>
-          <span class="badge ${sp.status === 'Paid' ? 'badge-active' : (sp.status === 'Approved' ? 'badge-saudi' : 'badge-pending')}">
-            ${sp.status}
-          </span>
-        </td>
-        <td>${sp.remarks || 'N/A'}</td>
-        <td>
-          <div style="display: flex; gap: 6px;">
-            ${sp.status === 'Pending' && currentUserRole !== 'viewer' ? `
-              <button class="btn btn-outline" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateSupplierPaymentStatus(${sp.id}, 'Approved')">Approve</button>
-            ` : ''}
-            ${sp.status !== 'Paid' && currentUserRole !== 'viewer' ? `
-              <button class="btn btn-success" style="padding: 2px 6px; font-size: 0.75rem;" onclick="updateSupplierPaymentStatus(${sp.id}, 'Paid')">Mark Paid</button>
-            ` : ''}
-            ${currentUserRole === 'admin' ? `
-              <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">Delete</button>
-            ` : ''}
-          </div>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = allSupplierPayments.map(sp => {
+      const tot = sp.amount || 0.0;
+      const pd = sp.paid_amount || 0.0;
+      const rem = sp.remaining_amount !== undefined ? sp.remaining_amount : max(0, tot - pd);
+
+      return `
+        <tr>
+          <td>#INV-${sp.id}</td>
+          <td><strong>${sp.company_name}</strong><br/><small>${sp.invoice_number || 'N/A'}</small></td>
+          <td><code>${sp.invoice_number || 'N/A'}</code></td>
+          <td>${sp.due_date}</td>
+          <td>SAR ${tot.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+          <td><span style="color: var(--primary); font-weight: 600;">SAR ${pd.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></td>
+          <td><strong style="color: ${rem > 0 ? 'var(--danger)' : 'var(--accent-emerald)'};">SAR ${rem.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
+          <td>
+            <span class="badge ${sp.status === 'Paid' ? 'badge-saudi' : (sp.status === 'Partially Paid' ? 'badge-pending' : 'badge-critical')}">
+              ${sp.status}
+            </span>
+          </td>
+          <td>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              ${rem > 0 && currentUserRole !== 'viewer' ? `
+                <button class="btn btn-success" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openDisburseSupplierPaymentModal(${sp.id}, '${sp.company_name.replace(/'/g, "\\'")}', ${rem})">
+                  💳 Partial / Disburse
+                </button>
+              ` : ''}
+              <a href="/api/suppliers/payments/${sp.id}/statement.pdf" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">
+                📜 PDF Statement
+              </a>
+              ${currentUserRole === 'admin' ? `
+                <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">Delete</button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
   } catch (err) {
     console.error('Error loading supplier payments:', err);
@@ -312,6 +328,8 @@ async function submitRecordSupplierPayment() {
 
     closeModal('modal-record-supplier');
     loadSupplierPayments();
+    loadFinanceAnalytics();
+    loadDashboardData();
     alert('Supplier payment invoice recorded successfully!');
 
   } catch (err) {
@@ -319,23 +337,58 @@ async function submitRecordSupplierPayment() {
   }
 }
 
-async function updateSupplierPaymentStatus(id, newStatus) {
+function openDisburseSupplierPaymentModal(spId, companyName, remainingAmount) {
+  document.getElementById('disburse-sp-id').value = spId;
+  document.getElementById('disburse-modal-title').innerText = `Disburse Payment: ${companyName}`;
+  document.getElementById('disburse-current-remaining').innerText = `SAR ${remainingAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('disburse-amount').value = remainingAmount;
+  document.getElementById('disburse-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('disburse-reference').value = `TXN-${Math.floor(100000 + Math.random() * 900000)}`;
+  document.getElementById('disburse-notes').value = 'Payment settlement';
+  openModal('modal-disburse-supplier');
+}
+
+async function submitDisburseSupplierPayment() {
+  const spId = document.getElementById('disburse-sp-id').value;
+  const amount = parseFloat(document.getElementById('disburse-amount').value || 0);
+  const payDate = document.getElementById('disburse-date').value;
+  const method = document.getElementById('disburse-method').value;
+  const ref = document.getElementById('disburse-reference').value;
+  const notes = document.getElementById('disburse-notes').value;
+
+  if (amount <= 0) {
+    alert('Please enter a valid disbursal amount.');
+    return;
+  }
+
   try {
-    const res = await fetch(`/api/suppliers/payments/${id}/status`, {
-      method: 'PUT',
+    const res = await fetch(`/api/suppliers/payments/${spId}/disburse`, {
+      method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ status: newStatus })
+      body: JSON.stringify({
+        payment_amount: amount,
+        payment_date: payDate,
+        payment_method: method,
+        reference_number: ref,
+        notes: notes
+      })
     });
 
     if (!res.ok) {
-      alert('Failed to update status');
+      const err = await res.json();
+      alert(`Disbursal Error: ${err.detail}`);
       return;
     }
 
+    const data = await res.json();
+    alert(`Payment of SAR ${amount.toLocaleString()} disbursed successfully!\nNew Remaining Balance: SAR ${data.remaining_amount.toLocaleString()}`);
+    closeModal('modal-disburse-supplier');
     loadSupplierPayments();
+    loadFinanceAnalytics();
+    loadDashboardData();
 
   } catch (err) {
-    alert(`Status update error: ${err}`);
+    alert(`Disbursal error: ${err}`);
   }
 }
 
@@ -354,13 +407,79 @@ async function deleteSupplierPayment(id) {
     }
 
     loadSupplierPayments();
+    loadFinanceAnalytics();
+    loadDashboardData();
 
   } catch (err) {
     alert(`Delete error: ${err}`);
   }
 }
 
-// 3. DEPARTMENTS & EMPLOYEES
+// 3. FINANCE & ACCOUNTS PAYABLE AGING ANALYTICS
+async function loadFinanceAnalytics() {
+  if (currentUserRole === 'viewer') return;
+
+  try {
+    const res = await fetch('/api/finance/analytics', { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const sum = data.summary;
+    document.getElementById('fin-stat-total-payables').innerText = `SAR ${sum.total_outstanding_payable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('fin-stat-overdue-payables').innerText = `SAR ${sum.total_overdue_payable.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('fin-stat-overdue-ratio').innerText = `${sum.overdue_ratio_percentage}%`;
+    document.getElementById('fin-stat-30d-outflow').innerText = `SAR ${data.projected_30_day_outflow.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+
+    const agingBody = document.getElementById('finance-aging-table-body');
+    if (agingBody) {
+      const buckets = data.aging_buckets;
+      const keys = ['current', 'days_1_30', 'days_31_60', 'days_61_90', 'days_90_plus'];
+
+      agingBody.innerHTML = keys.map(k => {
+        const b = buckets[k];
+        const share = sum.total_outstanding_payable > 0 ? ((b.amount / sum.total_outstanding_payable) * 100).toFixed(1) : '0.0';
+        return `
+          <tr>
+            <td>
+              <span class="badge" style="background: ${b.color}; color: #FFF;">${b.label}</span>
+            </td>
+            <td><strong>${b.count} Invoices</strong></td>
+            <td><strong style="color: ${b.color}; font-size: 1rem;">SAR ${b.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
+            <td>${share}%</td>
+            <td>
+              <div style="background: #E2E8F0; border-radius: 10px; height: 8px; width: 100%; overflow: hidden;">
+                <div style="background: ${b.color}; height: 100%; width: ${share}%;"></div>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    const projGrid = document.getElementById('finance-projection-grid');
+    if (projGrid) {
+      projGrid.innerHTML = `
+        <div style="background: #FFFFFF; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Monthly Payroll Outflow Commitment</div>
+          <div style="font-size: 1.4rem; font-weight: 800; color: #1E3A8A; margin-top: 4px;">SAR ${data.monthly_payroll_commitment.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+        </div>
+        <div style="background: #FFFFFF; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Outstanding Vendor Liabilities</div>
+          <div style="font-size: 1.4rem; font-weight: 800; color: var(--danger); margin-top: 4px;">SAR ${sum.total_outstanding_payable.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+        </div>
+        <div style="background: #ECFDF5; padding: 15px; border-radius: 8px; border: 1px solid #A7F3D0;">
+          <div style="font-size: 0.8rem; color: #065F46; font-weight: 600;">Year-to-Date Settled Vendor Outflows</div>
+          <div style="font-size: 1.4rem; font-weight: 800; color: var(--primary); margin-top: 4px;">SAR ${sum.total_settled_paid.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+        </div>
+      `;
+    }
+
+  } catch (err) {
+    console.error('Error loading finance analytics:', err);
+  }
+}
+
+// 4. DEPARTMENTS & EMPLOYEES
 async function loadDepartments() {
   try {
     const res = await fetch('/api/departments', { headers: getAuthHeaders() });
@@ -472,7 +591,7 @@ async function submitAddEmployee() {
   }
 }
 
-// 4. EMPLOYEE PROFILE & FILE VAULT
+// 5. EMPLOYEE PROFILE & FILE VAULT
 async function viewEmployeeDetail(empId) {
   currentEmployeeId = empId;
   openModal('modal-emp-detail');
@@ -652,7 +771,7 @@ async function submitUploadDocument() {
   }
 }
 
-// 5. PAYROLL & WPS
+// 6. PAYROLL & WPS
 async function loadPayrollRuns() {
   if (currentUserRole === 'viewer') return;
   try {
@@ -782,7 +901,7 @@ async function viewPayrollDetails(runId) {
   }
 }
 
-// 6. LEAVES
+// 7. LEAVES
 async function loadLeaves() {
   try {
     const res = await fetch('/api/leaves', { headers: getAuthHeaders() });
@@ -873,7 +992,7 @@ async function updateLeaveStatus(leaveId, status) {
   }
 }
 
-// 7. SAUDI CALCULATORS
+// 8. SAUDI CALCULATORS
 async function runEosbCalc() {
   const basic = parseFloat(document.getElementById('eosb-basic').value || 0);
   const start = document.getElementById('eosb-start').value;
@@ -935,7 +1054,7 @@ async function runGosiCalc() {
   }
 }
 
-// 8. SETTINGS & USERS
+// 9. SETTINGS & USERS
 async function loadUsersList() {
   if (currentUserRole === 'viewer') return;
   try {
@@ -1111,7 +1230,7 @@ async function saveSettings() {
   }
 }
 
-// 9. GOOGLE DRIVE AUTOMATED BACKUP
+// 10. GOOGLE DRIVE AUTOMATED BACKUP
 async function triggerGoogleDriveBackup() {
   const banner = document.getElementById('backup-status-banner');
   if (banner) {

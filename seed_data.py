@@ -4,17 +4,16 @@ from datetime import datetime, date, timedelta
 
 sys.path.append(os.path.dirname(__file__))
 
-import database as db
+import database_cloud as db
 from saudi_hr_engine import SaudiHREngine
 
 def seed_database():
     print("Initializing Database Schema...")
     db.init_db()
     
-    # Check if already seeded
     existing_emps = db.query_all("SELECT COUNT(*) as cnt FROM employees")
     if existing_emps and existing_emps[0]["cnt"] > 0:
-        print("Database already contains employees. Skipping seeder.")
+        print("Database already contains records. Skipping seeder.")
         return
         
     print("Seeding Departments...")
@@ -42,7 +41,7 @@ def seed_database():
             "arabic_name": "محمد العتيبي",
             "email": "m.otaibi@alamal-ksa.com",
             "phone": "+966501234567",
-            "national_id_iqama": "1098765432", # Saudi National ID starts with 1
+            "national_id_iqama": "1098765432",
             "nationality": "Saudi Arabia",
             "gender": "Male",
             "is_saudi": 1,
@@ -100,7 +99,7 @@ def seed_database():
             "arabic_name": "راهول شارما",
             "email": "rahul.sharma@alamal-ksa.com",
             "phone": "+966541122334",
-            "national_id_iqama": "2391029384", # Expat Iqama starts with 2
+            "national_id_iqama": "2391029384",
             "nationality": "India",
             "gender": "Male",
             "is_saudi": 0,
@@ -109,8 +108,8 @@ def seed_database():
             "designation": "Senior DevOps Engineer",
             "hire_date": "2021-01-10",
             "contract_type": "Fixed",
-            "contract_end_date": (date.today() + timedelta(days=45)).strftime("%Y-%m-%d"), # Expiring soon!
-            "iqama_expiry_date": (date.today() + timedelta(days=25)).strftime("%Y-%m-%d"), # Expiring critical!
+            "contract_end_date": (date.today() + timedelta(days=45)).strftime("%Y-%m-%d"),
+            "iqama_expiry_date": (date.today() + timedelta(days=25)).strftime("%Y-%m-%d"),
             "passport_number": "Z8910293",
             "passport_expiry_date": "2027-03-30",
             "bank_name": "Saudi National Bank (SNB)",
@@ -120,93 +119,6 @@ def seed_database():
             "transport_allowance": 1000.0,
             "other_allowances": 500.0,
             "gosi_number": "908127364",
-            "status": "Active"
-        },
-        {
-            "emp_code": "EMP-004",
-            "first_name": "Fahad",
-            "last_name": "Al-Qahtani",
-            "arabic_name": "فهد القحطاني",
-            "email": "fahad.qahtani@alamal-ksa.com",
-            "phone": "+966503344556",
-            "national_id_iqama": "1076543210",
-            "nationality": "Saudi Arabia",
-            "gender": "Male",
-            "is_saudi": 1,
-            "dob": "1990-01-18",
-            "department_id": dept_ids["FIN"],
-            "designation": "Finance Manager",
-            "hire_date": "2018-08-01",
-            "contract_type": "Indefinite",
-            "contract_end_date": None,
-            "iqama_expiry_date": "2030-01-01",
-            "passport_number": "K1092837",
-            "passport_expiry_date": "2028-11-11",
-            "bank_name": "Alinma Bank",
-            "iban": "SA0505000000112233445566",
-            "basic_salary": 20000.0,
-            "housing_allowance": 5000.0,
-            "transport_allowance": 1500.0,
-            "other_allowances": 1000.0,
-            "gosi_number": "209182736",
-            "status": "Active"
-        },
-        {
-            "emp_code": "EMP-005",
-            "first_name": "Ahmed",
-            "last_name": "El-Sayed",
-            "arabic_name": "أحمد السيد",
-            "email": "ahmed.sayed@alamal-ksa.com",
-            "phone": "+966567788990",
-            "national_id_iqama": "2481029381",
-            "nationality": "Egypt",
-            "gender": "Male",
-            "is_saudi": 0,
-            "dob": "1987-07-14",
-            "department_id": dept_ids["OPS"],
-            "designation": "Supply Chain Specialist",
-            "hire_date": "2022-04-01",
-            "contract_type": "Fixed",
-            "contract_end_date": "2027-04-01",
-            "iqama_expiry_date": (date.today() + timedelta(days=50)).strftime("%Y-%m-%d"), # Expiring soon!
-            "passport_number": "F9081273",
-            "passport_expiry_date": (date.today() + timedelta(days=40)).strftime("%Y-%m-%d"), # Passport expiring soon!
-            "bank_name": "Bank AlJazira",
-            "iban": "SA6060000000998877665544",
-            "basic_salary": 11000.0,
-            "housing_allowance": 2750.0,
-            "transport_allowance": 1000.0,
-            "other_allowances": 500.0,
-            "gosi_number": "709182736",
-            "status": "Active"
-        },
-        {
-            "emp_code": "EMP-006",
-            "first_name": "Noura",
-            "last_name": "Al-Zahrani",
-            "arabic_name": "نورة الزهراني",
-            "email": "noura.zahrani@alamal-ksa.com",
-            "phone": "+966509988776",
-            "national_id_iqama": "1065432109",
-            "nationality": "Saudi Arabia",
-            "gender": "Female",
-            "is_saudi": 1,
-            "dob": "1995-02-28",
-            "department_id": dept_ids["HR"],
-            "designation": "Talent Acquisition Specialist",
-            "hire_date": "2023-02-15",
-            "contract_type": "Indefinite",
-            "contract_end_date": None,
-            "iqama_expiry_date": "2030-05-05",
-            "passport_number": "P8091283",
-            "passport_expiry_date": "2029-01-20",
-            "bank_name": "Saudi British Bank (SABB)",
-            "iban": "SA1818000000443322110099",
-            "basic_salary": 12000.0,
-            "housing_allowance": 3000.0,
-            "transport_allowance": 1000.0,
-            "other_allowances": 500.0,
-            "gosi_number": "509182736",
             "status": "Active"
         }
     ]
@@ -232,55 +144,67 @@ def seed_database():
         """, emp)
         emp_db_ids.append(e_id)
 
-    print("Seeding Sample Documents...")
-    db.execute_cmd("""
-        INSERT INTO documents (employee_id, doc_type, file_name, file_path, upload_date, expiry_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (emp_db_ids[0], "National ID", "Mohammed_ID_Copy.pdf", "uploads/documents/sample_id.pdf", "2023-01-01", "2028-12-31", "Verified National ID"))
+    print("Seeding Sample Supplier Payments & Aging Invoices...")
+    today = date.today()
+    suppliers = [
+        {
+            "company_name": "Al-Jazeera Office Supplies Co.",
+            "invoice_number": "INV-2026-0812",
+            "invoice_date": (today - timedelta(days=20)).strftime("%Y-%m-%d"),
+            "due_date": (today + timedelta(days=10)).strftime("%Y-%m-%d"), # Current
+            "invoice_details": "Supply of ergonomic office desks, chairs, and paper supplies",
+            "supply_date": (today - timedelta(days=18)).strftime("%Y-%m-%d"),
+            "amount": 18500.00,
+            "status": "Pending",
+            "remarks": "Net 30 days payment term"
+        },
+        {
+            "company_name": "Saudi Technology Hardware Ltd",
+            "invoice_number": "INV-2026-0744",
+            "invoice_date": (today - timedelta(days=50)).strftime("%Y-%m-%d"),
+            "due_date": (today - timedelta(days=20)).strftime("%Y-%m-%d"), # 1-30 Days Overdue!
+            "invoice_details": "High-performance developer laptops and server racks",
+            "supply_date": (today - timedelta(days=48)).strftime("%Y-%m-%d"),
+            "amount": 42000.00,
+            "status": "Approved",
+            "remarks": "Overdue payment - scheduled for immediate transfer"
+        },
+        {
+            "company_name": "Riyadh Logistics & Warehousing",
+            "invoice_number": "INV-2026-0610",
+            "invoice_date": (today - timedelta(days=80)).strftime("%Y-%m-%d"),
+            "due_date": (today - timedelta(days=50)).strftime("%Y-%m-%d"), # 31-60 Days Overdue!
+            "invoice_details": "Freight handling, customs clearance, and courier services",
+            "supply_date": (today - timedelta(days=78)).strftime("%Y-%m-%d"),
+            "amount": 12800.00,
+            "status": "Pending",
+            "remarks": "Awaiting finance manager final signoff"
+        },
+        {
+            "company_name": "Al-Olayan Facilities Management",
+            "invoice_number": "INV-2026-0501",
+            "invoice_date": (today - timedelta(days=60)).strftime("%Y-%m-%d"),
+            "due_date": (today - timedelta(days=30)).strftime("%Y-%m-%d"),
+            "invoice_details": "Monthly facility maintenance and HVAC servicing",
+            "supply_date": (today - timedelta(days=58)).strftime("%Y-%m-%d"),
+            "amount": 15000.00,
+            "status": "Paid",
+            "payment_date": (today - timedelta(days=5)).strftime("%Y-%m-%d"),
+            "remarks": "Settled via Riyad Bank corporate transfer"
+        }
+    ]
 
-    db.execute_cmd("""
-        INSERT INTO documents (employee_id, doc_type, file_name, file_path, upload_date, expiry_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (emp_db_ids[2], "Iqama", "Rahul_Iqama_Copy.pdf", "uploads/documents/rahul_iqama.pdf", "2023-02-10", (date.today() + timedelta(days=25)).strftime("%Y-%m-%d"), "Expiring Iqama Renewal Requested"))
-
-    print("Seeding Leave Requests...")
-    db.execute_cmd("""
-        INSERT INTO leaves (employee_id, leave_type, start_date, end_date, days, reason, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (emp_db_ids[0], "Annual", "2026-09-01", "2026-09-14", 14, "Annual Family Vacation in Abha", "Approved", "2026-08-01"))
-
-    db.execute_cmd("""
-        INSERT INTO leaves (employee_id, leave_type, start_date, end_date, days, reason, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (emp_db_ids[2], "Sick", "2026-08-10", "2026-08-12", 3, "Medical Checkup & Treatment", "Pending", "2026-08-05"))
-
-    print("Seeding Initial Monthly Payroll Run...")
-    payroll_run_id = db.execute_cmd("""
-        INSERT INTO payroll_runs (payroll_month, payroll_year, total_basic, total_allowances, total_deductions, total_net_pay, status, processed_at)
-        VALUES (8, 2026, 97000.0, 34750.0, 7156.25, 124593.75, 'Approved', ?)
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),))
-
-    # Calculate details for employees
-    all_emps = db.query_all("SELECT * FROM employees")
-    for emp in all_emps:
-        basic = emp["basic_salary"]
-        housing = emp["housing_allowance"]
-        transport = emp["transport_allowance"]
-        other = emp["other_allowances"]
-        gross = basic + housing + transport + other
-        
-        gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, housing)
-        gosi_emp = gosi_res["employee_deduction"]
-        gosi_empr = gosi_res["employer_contribution"]
-        net = gross - gosi_emp
-        
+    for sp in suppliers:
         db.execute_cmd("""
-            INSERT INTO payroll_details (
-                payroll_run_id, employee_id, basic_salary, housing_allowance,
-                transport_allowance, other_allowances, gross_salary,
-                gosi_employee, gosi_employer, other_deductions, net_salary
+            INSERT INTO supplier_payments (
+                company_name, invoice_number, invoice_date, due_date, invoice_details,
+                supply_date, amount, status, payment_date, remarks, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (payroll_run_id, emp["id"], basic, housing, transport, other, gross, gosi_emp, gosi_empr, 0.0, net))
+        """, (
+            sp["company_name"], sp["invoice_number"], sp["invoice_date"], sp["due_date"],
+            sp["invoice_details"], sp["supply_date"], sp["amount"], sp["status"],
+            sp.get("payment_date"), sp["remarks"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
 
     print("Database seeding completed successfully!")
 

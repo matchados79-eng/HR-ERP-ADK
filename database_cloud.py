@@ -99,20 +99,38 @@ def init_db():
     );
     """)
     
-    # Supplier Payment Tracking
+    # Supplier Payment & Aging Invoice Tracking with Auto-Adjusting Balances
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS supplier_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_name TEXT NOT NULL,
         invoice_number TEXT,
         invoice_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
         invoice_details TEXT,
         supply_date TEXT NOT NULL,
         amount REAL NOT NULL DEFAULT 0.0,
+        paid_amount REAL NOT NULL DEFAULT 0.0,
+        remaining_amount REAL NOT NULL DEFAULT 0.0,
         status TEXT DEFAULT 'Pending',
         payment_date TEXT,
         remarks TEXT,
         created_at TEXT NOT NULL
+    );
+    """)
+    
+    # Supplier Payment History Transaction Logs
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS supplier_payment_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_payment_id INTEGER NOT NULL,
+        payment_amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        payment_method TEXT DEFAULT 'Bank Transfer',
+        reference_number TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (supplier_payment_id) REFERENCES supplier_payments(id) ON DELETE CASCADE
     );
     """)
     
@@ -190,7 +208,6 @@ def init_db():
     );
     """)
     
-    # Default settings
     default_settings = {
         "company_name": "Al-Amal Enterprise Solutions KSA",
         "company_arabic_name": "شركة الأمل لترشيد الحلول المتكاملة",
@@ -206,7 +223,6 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (k, v))
         
-    # Default Admin User
     from auth import hash_password
     default_admin_hash = hash_password("AdminSecret123!")
     cursor.execute("""

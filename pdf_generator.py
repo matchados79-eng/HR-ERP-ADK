@@ -7,9 +7,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
-    """
-    Generates a professional Saudi PDF Payslip with salary breakdown, GOSI contributions, and company header.
-    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -22,14 +19,13 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     
     styles = getSampleStyleSheet()
     
-    # Custom styles
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=20,
         leading=24,
-        textColor=colors.HexColor('#006C35'), # Saudi Green
+        textColor=colors.HexColor('#006C35'),
         alignment=0
     )
     
@@ -71,7 +67,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     
     elements = []
     
-    # 1. Header Table
     company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
     cr_num = company_info.get("cr_number", "1010894512")
     gosi_reg = company_info.get("gosi_reg_number", "309481920")
@@ -92,7 +87,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(Spacer(1, 10))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
     
-    # 2. Employee Details Grid
     emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}"
     is_saudi_str = "Saudi National" if employee_data.get("is_saudi") else "Expat / Non-Saudi"
     
@@ -132,7 +126,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(emp_table)
     elements.append(Spacer(1, 15))
     
-    # 3. Financial Breakdown Table (Earnings vs Deductions)
     elements.append(Paragraph("Salary & Allowance Breakdown", section_heading))
     elements.append(Spacer(1, 6))
     
@@ -188,7 +181,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
     
-    # Header cells text color fix
     fin_table.setStyle(TableStyle([
         ('TEXTCOLOR', (0,0), (0,0), colors.white),
         ('TEXTCOLOR', (1,0), (1,0), colors.white),
@@ -199,7 +191,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(fin_table)
     elements.append(Spacer(1, 15))
     
-    # 4. Net Salary Highlight Box
     net_box_data = [
         [
             Paragraph("<b>NET SALARY PAYABLE (صافي الراتب):</b>", ParagraphStyle('NetLbl', parent=cell_bold, fontSize=12, textColor=colors.HexColor('#0B5D34'))),
@@ -218,12 +209,10 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(net_table)
     elements.append(Spacer(1, 15))
     
-    # 5. Employer GOSI Contribution Info
     gosi_info_p = Paragraph(f"<font size=8 color='#6B7280'>* Note: Employer GOSI Contribution for this period: SAR {gosi_empr:,.2f}. (Calculated per Saudi GOSI Regulations).</font>", cell_style)
     elements.append(gosi_info_p)
     elements.append(Spacer(1, 20))
     
-    # 6. Signatures Box
     sig_data = [
         [
             Paragraph("<b>Employer Authorized Stamp & Signature</b>", cell_style),
@@ -232,6 +221,218 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         [
             Paragraph("<br/><br/>____________________________________<br/>Al-Amal Enterprise HR Department", subtitle_style),
             Paragraph("<br/><br/>____________________________________<br/>Signature & Date", subtitle_style)
+        ]
+    ]
+    sig_table = Table(sig_data, colWidths=[3.6*inch, 3.6*inch])
+    sig_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(sig_table)
+    
+    doc.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: dict) -> bytes:
+    """
+    Generates official Supplier Statement & Payment Voucher PDF.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor('#006C35'),
+        alignment=0
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'SubTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor('#4B5563')
+    )
+    
+    section_heading = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=11,
+        leading=15,
+        textColor=colors.HexColor('#0B5D34')
+    )
+    
+    cell_style = ParagraphStyle(
+        'CellText',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor('#1F2937')
+    )
+    
+    cell_bold = ParagraphStyle(
+        'CellBold',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor('#1F2937')
+    )
+    
+    elements = []
+    
+    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
+    cr_num = company_info.get("cr_number", "1010894512")
+    
+    header_data = [
+        [
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | Riyadh, KSA</font>", subtitle_style),
+            Paragraph("<b>SUPPLIER PAYMENT STATEMENT</b><br/><font size=9 color='#006C35'>كشف حساب المورد</font>", title_style)
+        ]
+    ]
+    
+    header_table = Table(header_data, colWidths=[4.0*inch, 3.2*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
+    
+    total_amt = sp.get("amount", 0.0)
+    paid_amt = sp.get("paid_amount", 0.0)
+    rem_amt = sp.get("remaining_amount", total_amt - paid_amt)
+    
+    inv_info_data = [
+        [
+            Paragraph("<b>Vendor Company:</b>", cell_bold), Paragraph(str(sp.get("company_name", "")), cell_style),
+            Paragraph("<b>Invoice Number:</b>", cell_bold), Paragraph(str(sp.get("invoice_number", "N/A")), cell_style)
+        ],
+        [
+            Paragraph("<b>Invoice Date:</b>", cell_bold), Paragraph(str(sp.get("invoice_date", "")), cell_style),
+            Paragraph("<b>Due Date:</b>", cell_bold), Paragraph(str(sp.get("due_date", "")), cell_style)
+        ],
+        [
+            Paragraph("<b>Supply Date:</b>", cell_bold), Paragraph(str(sp.get("supply_date", "")), cell_style),
+            Paragraph("<b>Payment Status:</b>", cell_bold), Paragraph(str(sp.get("status", "Pending")), cell_style)
+        ],
+        [
+            Paragraph("<b>Invoice Description:</b>", cell_bold), Paragraph(str(sp.get("invoice_details", "N/A")), cell_style),
+            Paragraph("<b>Remarks / Notes:</b>", cell_bold), Paragraph(str(sp.get("remarks", "N/A")), cell_style)
+        ]
+    ]
+    
+    inv_table = Table(inv_info_data, colWidths=[1.5*inch, 2.1*inch, 1.5*inch, 2.1*inch])
+    inv_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9FAFB')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F3F4F6')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+    ]))
+    elements.append(inv_table)
+    elements.append(Spacer(1, 15))
+    
+    # Financial Balance Box
+    bal_data = [
+        [
+            Paragraph("<b>Total Invoice Amount:</b>", cell_bold), Paragraph(f"SAR {total_amt:,.2f}", cell_style),
+            Paragraph("<b>Total Amount Paid:</b>", cell_bold), Paragraph(f"SAR {paid_amt:,.2f}", cell_style),
+            Paragraph("<b>Outstanding Balance:</b>", ParagraphStyle('BalL', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
+            Paragraph(f"<b>SAR {rem_amt:,.2f}</b>", ParagraphStyle('BalV', parent=cell_bold, textColor=colors.HexColor('#EF4444'), fontSize=11))
+        ]
+    ]
+    bal_table = Table(bal_data, colWidths=[1.4*inch, 1.0*inch, 1.4*inch, 1.0*inch, 1.4*inch, 1.0*inch])
+    bal_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FEF2F2')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#FCA5A5')),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(bal_table)
+    elements.append(Spacer(1, 15))
+    
+    # Payment History Table
+    elements.append(Paragraph("Payment Disbursal History & Transactions", section_heading))
+    elements.append(Spacer(1, 6))
+    
+    log_rows = [
+        [
+            Paragraph("<b>Date</b>", cell_bold),
+            Paragraph("<b>Payment Method</b>", cell_bold),
+            Paragraph("<b>Reference #</b>", cell_bold),
+            Paragraph("<b>Notes / Details</b>", cell_bold),
+            Paragraph("<b>Amount Paid (SAR)</b>", cell_bold)
+        ]
+    ]
+    
+    if not payment_logs:
+        log_rows.append([Paragraph("No payment transactions recorded yet.", cell_style), "", "", "", ""])
+    else:
+        for lg in payment_logs:
+            log_rows.append([
+                Paragraph(str(lg.get("payment_date", "")), cell_style),
+                Paragraph(str(lg.get("payment_method", "Bank Transfer")), cell_style),
+                Paragraph(str(lg.get("reference_number", "N/A")), cell_style),
+                Paragraph(str(lg.get("notes", "N/A")), cell_style),
+                Paragraph(f"<b>SAR {lg.get('payment_amount', 0.0):,.2f}</b>", cell_style)
+            ])
+            
+    history_table = Table(log_rows, colWidths=[1.1*inch, 1.4*inch, 1.3*inch, 2.0*inch, 1.4*inch])
+    history_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+    ]))
+    
+    history_table.setStyle(TableStyle([
+        ('TEXTCOLOR', (0,0), (0,0), colors.white),
+        ('TEXTCOLOR', (1,0), (1,0), colors.white),
+        ('TEXTCOLOR', (2,0), (2,0), colors.white),
+        ('TEXTCOLOR', (3,0), (3,0), colors.white),
+        ('TEXTCOLOR', (4,0), (4,0), colors.white),
+    ]))
+    
+    elements.append(history_table)
+    elements.append(Spacer(1, 20))
+    
+    sig_data = [
+        [
+            Paragraph("<b>Finance Manager Signature</b>", cell_style),
+            Paragraph("<b>Vendor Acknowledgment</b>", cell_style)
+        ],
+        [
+            Paragraph("<br/><br/>____________________________________<br/>Al-Amal Enterprise Finance Dept", subtitle_style),
+            Paragraph("<br/><br/>____________________________________<br/>Authorized Representative", subtitle_style)
         ]
     ]
     sig_table = Table(sig_data, colWidths=[3.6*inch, 3.6*inch])

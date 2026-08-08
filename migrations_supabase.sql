@@ -1,4 +1,4 @@
--- Saudi HR ERP System - Supabase / PostgreSQL Production Schema
+-- Saudi HR & Finance ERP System - Complete Supabase / PostgreSQL Migration Schema (v3.3)
 
 -- 1. Departments Table
 CREATE TABLE IF NOT EXISTS departments (
@@ -42,18 +42,48 @@ CREATE TABLE IF NOT EXISTS employees (
     status VARCHAR(50) DEFAULT 'Active'
 );
 
--- 3. Users & Roles Table (for Auth)
+-- 3. Users & Auth Roles Table
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     hashed_password TEXT NOT NULL,
     full_name VARCHAR(255) NOT NULL,
-    role VARCHAR(50) DEFAULT 'hr_manager', -- 'admin', 'hr_manager', 'employee'
+    role VARCHAR(50) DEFAULT 'hr_manager', -- 'admin', 'hr_manager', 'viewer'
     employee_id INT REFERENCES employees(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Documents Table
+-- 4. Supplier Payment & Auto-Adjusting Balances Table
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id SERIAL PRIMARY KEY,
+    company_name VARCHAR(255) NOT NULL,
+    invoice_number VARCHAR(100),
+    invoice_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    invoice_details TEXT,
+    supply_date DATE NOT NULL,
+    amount NUMERIC(15,2) NOT NULL DEFAULT 0.0,
+    paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0.0,
+    remaining_amount NUMERIC(15,2) NOT NULL DEFAULT 0.0,
+    status VARCHAR(50) DEFAULT 'Pending', -- 'Pending', 'Partially Paid', 'Approved', 'Paid'
+    payment_date DATE,
+    remarks TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Supplier Payment Transaction Logs Table (Partial Payment History)
+CREATE TABLE IF NOT EXISTS supplier_payment_logs (
+    id SERIAL PRIMARY KEY,
+    supplier_payment_id INT NOT NULL REFERENCES supplier_payments(id) ON DELETE CASCADE,
+    payment_amount NUMERIC(15,2) NOT NULL,
+    payment_date DATE NOT NULL,
+    payment_method VARCHAR(100) DEFAULT 'Bank Transfer',
+    reference_number VARCHAR(100),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Documents Table
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -65,7 +95,7 @@ CREATE TABLE IF NOT EXISTS documents (
     notes TEXT
 );
 
--- 5. Leaves Table
+-- 7. Leaves Table
 CREATE TABLE IF NOT EXISTS leaves (
     id SERIAL PRIMARY KEY,
     employee_id INT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -78,7 +108,7 @@ CREATE TABLE IF NOT EXISTS leaves (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Payroll Runs Table
+-- 8. Payroll Runs Table
 CREATE TABLE IF NOT EXISTS payroll_runs (
     id SERIAL PRIMARY KEY,
     payroll_month INT NOT NULL,
@@ -91,7 +121,7 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 7. Payroll Details Table
+-- 9. Payroll Details Table
 CREATE TABLE IF NOT EXISTS payroll_details (
     id SERIAL PRIMARY KEY,
     payroll_run_id INT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
@@ -107,13 +137,26 @@ CREATE TABLE IF NOT EXISTS payroll_details (
     net_salary NUMERIC(12,2) DEFAULT 0.0
 );
 
--- 8. System Settings Table
+-- 10. System Settings Table
 CREATE TABLE IF NOT EXISTS settings (
     key VARCHAR(100) PRIMARY KEY,
     value TEXT NOT NULL
 );
 
--- Default Admin User (Password: AdminSecret123!)
+-- Seed Default Corporate Settings
+INSERT INTO settings (key, value) VALUES
+('company_name', 'Al-Amal Enterprise Solutions KSA'),
+('company_arabic_name', 'شركة الأمل لترشيد الحلول المتكاملة'),
+('cr_number', '1010894512'),
+('mol_establishment_id', '7-889412'),
+('gosi_reg_number', '309481920'),
+('wps_bank_code', 'RIBL'),
+('wps_bank_name', 'Riyad Bank'),
+('hr_email', 'hr@alamal-ksa.com'),
+('address', 'King Fahd Road, Olaya District, Riyadh, Saudi Arabia')
+ON CONFLICT (key) DO NOTHING;
+
+-- Seed Default Admin User Account (Email: admin@alamal-ksa.com | Password: AdminSecret123!)
 INSERT INTO users (email, hashed_password, full_name, role)
 VALUES ('admin@alamal-ksa.com', '00773929baac4cbc:6b1a1b85387d469e09aa9d3e41994d8f042ab0ae5e6473c78cbe8667f4161582', 'System Administrator', 'admin')
 ON CONFLICT (email) DO NOTHING;

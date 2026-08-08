@@ -18,18 +18,18 @@ from google_drive_backup import generate_full_backup_archive
 from models import (
     DepartmentCreate, EmployeeCreate, LeaveCreate, LeaveStatusUpdate,
     EOSBRequest, GOSIRequest, PayrollRunRequest,
-    SupplierPaymentCreate, SupplierPaymentStatusUpdate
+    SupplierPaymentCreate, SupplierPaymentStatusUpdate, SupplierDisburseRequest
 )
 from saudi_hr_engine import SaudiHREngine
-from pdf_generator import generate_payslip_pdf
+from pdf_generator import generate_payslip_pdf, generate_supplier_statement_pdf
 
 # Initialize DB
 db.init_db()
 
 app = FastAPI(
-    title="Saudi HR ERP System - Production Cloud Edition",
-    description="Production-grade Saudi HR & Payroll ERP System deployed on Vercel + Supabase with Auth & Google Drive Backups",
-    version="3.1.0"
+    title="Saudi HR ERP System - SME Finance Edition",
+    description="Production-grade Saudi HR, Payroll & Finance ERP System with Supplier Payment History & PDF Statement Export",
+    version="3.3.0"
 )
 
 # Enable CORS for local & Vercel access
@@ -175,7 +175,7 @@ def delete_user_account(user_id: int, user: dict = Depends(require_roles(["admin
     db.execute_cmd("DELETE FROM users WHERE id = ?", (user_id,))
     return {"message": "User account deleted successfully"}
 
-# --- Supplier Payment Tracking Endpoints ---
+# --- Supplier Payment Tracking & Auto-Adjusting Balances Endpoints ---
 @app.get("/api/suppliers/payments")
 def list_supplier_payments(
     search: Optional[str] = None,
@@ -195,39 +195,138 @@ def list_supplier_payments(
         params.append(status)
         
     sql += " ORDER BY id DESC"
-    return db.query_all(sql, tuple(params))
+    raw_payments = db.query_all(sql, tuple(params))
+    
+    aging_res = SaudiHREngine.calculate_accounts_payable_aging(raw_payments)
+    return aging_res["processed_payments"]
 
 @app.post("/api/suppliers/payments")
 def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    paid_amt = req.amount if req.status == "Paid" else 0.0
+    rem_amt = max(0.0, req.amount - paid_amt)
+    
     sp_id = db.execute_cmd("""
         INSERT INTO supplier_payments (
-            company_name, invoice_number, invoice_date, invoice_details,
-            supply_date, amount, status, remarks, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            company_name, invoice_number, invoice_date, due_date, invoice_details,
+            supply_date, amount, paid_amount, remaining_amount, status, remarks, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        req.company_name, req.invoice_number, req.invoice_date, req.invoice_details,
-        req.supply_date, req.amount, req.status, req.remarks, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        req.company_name, req.invoice_number, req.invoice_date, req.due_date, req.invoice_details,
+        req.supply_date, req.amount, paid_amt, rem_amt, req.status, req.remarks, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
+    
+    if paid_amt > 0:
+        db.execute_cmd("""
+            INSERT INTO supplier_payment_logs (
+                supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (sp_id, paid_amt, date.today().strftime("%Y-%m-%d"), "Bank Transfer", "Initial Settlement", "Full initial payment", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
     return {"message": "Supplier payment record created successfully", "id": sp_id}
 
-@app.put("/api/suppliers/payments/{sp_id}/status")
-def update_supplier_payment_status(
+@app.post("/api/suppliers/payments/{sp_id}/disburse")
+def disburse_supplier_payment(
     sp_id: int,
-    req: SupplierPaymentStatusUpdate,
+    req: SupplierDisburseRequest,
     user: dict = Depends(require_roles(["admin", "hr_manager"]))
 ):
-    existing = db.query_one("SELECT id FROM supplier_payments WHERE id = ?", (sp_id,))
-    if not existing:
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
         raise HTTPException(status_code=404, detail="Supplier payment record not found.")
         
-    pay_date = req.payment_date or (date.today().strftime("%Y-%m-%d") if req.status == 'Paid' else None)
-    db.execute_cmd("UPDATE supplier_payments SET status = ?, payment_date = ? WHERE id = ?", (req.status, pay_date, sp_id))
-    return {"message": f"Supplier payment status updated to {req.status}"}
+    if req.payment_amount <= 0:
+        raise HTTPException(status_code=400, detail="Disbursal amount must be greater than zero.")
+        
+    pay_date = req.payment_date or date.today().strftime("%Y-%m-%d")
+    
+    # 1. Log payment transaction
+    db.execute_cmd("""
+        INSERT INTO supplier_payment_logs (
+            supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (sp_id, req.payment_amount, pay_date, req.payment_method or "Bank Transfer", req.reference_number, req.notes, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    
+    # 2. Recalculate auto-adjusting paid & remaining amounts
+    total_paid_row = db.query_one("SELECT SUM(payment_amount) as tot FROM supplier_payment_logs WHERE supplier_payment_id = ?", (sp_id,))
+    total_paid = float(total_paid_row["tot"] or 0.0)
+    
+    invoice_amount = float(sp["amount"])
+    new_remaining = max(0.0, invoice_amount - total_paid)
+    
+    if new_remaining <= 0:
+        new_status = "Paid"
+        new_remaining = 0.0
+    else:
+        new_status = "Partially Paid"
+        
+    db.execute_cmd("""
+        UPDATE supplier_payments SET
+            paid_amount = ?,
+            remaining_amount = ?,
+            status = ?,
+            payment_date = ?
+        WHERE id = ?
+    """, (total_paid, new_remaining, new_status, pay_date, sp_id))
+    
+    return {
+        "message": f"Payment of SAR {req.payment_amount:,.2f} disbursed successfully",
+        "paid_amount": total_paid,
+        "remaining_amount": new_remaining,
+        "status": new_status
+    }
+
+@app.get("/api/suppliers/payments/{sp_id}/history")
+def get_supplier_payment_history(sp_id: int, user: dict = Depends(get_current_user)):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier payment record not found.")
+        
+    logs = db.query_all("SELECT * FROM supplier_payment_logs WHERE supplier_payment_id = ? ORDER BY id DESC", (sp_id,))
+    
+    return {
+        "supplier_payment": sp,
+        "payment_logs": logs
+    }
+
+@app.get("/api/suppliers/payments/{sp_id}/statement.pdf")
+def download_supplier_statement_pdf(sp_id: int, user: dict = Depends(get_current_user)):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier payment record not found.")
+        
+    logs = db.query_all("SELECT * FROM supplier_payment_logs WHERE supplier_payment_id = ? ORDER BY id ASC", (sp_id,))
+    
+    setting_rows = db.query_all("SELECT * FROM settings")
+    settings = {s["key"]: s["value"] for s in setting_rows}
+    
+    pdf_bytes = generate_supplier_statement_pdf(sp, logs, settings)
+    filename = f"Supplier_Statement_{sp.get('company_name', 'Vendor').replace(' ', '_')}_{sp_id}.pdf"
+    
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={filename}"})
 
 @app.delete("/api/suppliers/payments/{sp_id}")
 def delete_supplier_payment(sp_id: int, user: dict = Depends(require_roles(["admin"]))):
     db.execute_cmd("DELETE FROM supplier_payments WHERE id = ?", (sp_id,))
     return {"message": "Supplier payment record deleted successfully"}
+
+# --- Financial Analytics & Accounts Payable Aging Hub ---
+@app.get("/api/finance/analytics")
+def get_finance_analytics(user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    supplier_payments = db.query_all("SELECT * FROM supplier_payments ORDER BY id DESC")
+    aging_res = SaudiHREngine.calculate_accounts_payable_aging(supplier_payments)
+    
+    employees = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
+    monthly_payroll = sum((e["basic_salary"] + e["housing_allowance"] + e["transport_allowance"] + e["other_allowances"]) for e in employees)
+    
+    projected_30_day_outflow = monthly_payroll + aging_res["summary"]["total_outstanding_payable"]
+    
+    return {
+        "summary": aging_res["summary"],
+        "aging_buckets": aging_res["aging_buckets"],
+        "monthly_payroll_commitment": monthly_payroll,
+        "projected_30_day_outflow": projected_30_day_outflow,
+        "vendor_invoices_count": len(supplier_payments)
+    }
 
 # --- Automated Google Drive Backup Endpoint ---
 @app.post("/api/backup/google-drive")
@@ -268,8 +367,7 @@ def get_dashboard_stats(user: dict = Depends(get_current_user)):
         GROUP BY d.id
     """)
     
-    # Supplier Payment Stats
-    pending_supplier_pay = db.query_all("SELECT SUM(amount) as tot FROM supplier_payments WHERE status != 'Paid'")[0]["tot"] or 0.0
+    pending_supplier_pay = db.query_all("SELECT SUM(remaining_amount) as tot FROM supplier_payments WHERE status != 'Paid'")[0]["tot"] or 0.0
     
     return {
         "total_employees": total_emp,

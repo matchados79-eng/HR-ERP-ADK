@@ -51,6 +51,7 @@ class SupplierPaymentCreate(BaseModel):
     company_name: str
     invoice_number: Optional[str] = None
     invoice_date: str
+    due_date: str
     invoice_details: str
     supply_date: str
     amount: float
@@ -60,6 +61,13 @@ class SupplierPaymentCreate(BaseModel):
 class SupplierPaymentStatusUpdate(BaseModel):
     status: str
     payment_date: Optional[str] = None
+
+class SupplierDisburseRequest(BaseModel):
+    payment_amount: float
+    payment_date: Optional[str] = None
+    payment_method: Optional[str] = "Bank Transfer"
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
 
 class EOSBRequest(BaseModel):
     basic_salary: float
