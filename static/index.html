@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saudi HR ERP System - Production Cloud Portal</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">KSA</div>
+      <div>
+        <div class="sidebar-title">Saudi HR ERP</div>
+        <div class="sidebar-subtitle">Cloud Edition (Vercel)</div>
+      </div>
+    </div>
+    
+    <ul class="sidebar-nav">
+      <li class="nav-item">
+        <a class="nav-link active" onclick="switchSection('dashboard')">
+          <span class="nav-icon">📊</span> Dashboard
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" onclick="switchSection('employees')">
+          <span class="nav-icon">👥</span> Employees Directory
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" onclick="switchSection('payroll')">
+          <span class="nav-icon">💵</span> Payroll & WPS Engine
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" onclick="switchSection('leaves')">
+          <span class="nav-icon">📅</span> Leave Management
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" onclick="switchSection('compliance')">
+          <span class="nav-icon">⚖️</span> Saudi Compliance Hub
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" onclick="switchSection('settings')">
+          <span class="nav-icon">⚙️</span> System & Backup Settings
+        </a>
+      </li>
+    </ul>
+    
+    <div class="sidebar-footer">
+      <div>Ministry Compliant • SAMA WPS Ready</div>
+      <small>Supabase & Vercel Certified v3.0</small>
+    </div>
+  </aside>
+
+  <!-- Main Workspace Content -->
+  <main class="main-content">
+    
+    <!-- Top Header Bar -->
+    <header class="top-bar">
+      <div class="page-title-box">
+        <h1 id="page-heading">HR Dashboard</h1>
+        <p id="page-subheading">Comprehensive overview of Saudi workforce, Saudization rates, and pending actions</p>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button class="btn btn-success" onclick="triggerGoogleDriveBackup()" style="box-shadow: var(--shadow-sm);">
+          ☁️ Backup to Google Drive
+        </button>
+        <div class="user-profile-badge">
+          <span style="font-size: 1.2rem;">🇸🇦</span>
+          <div>
+            <strong style="font-size: 0.9rem;" id="user-display-name">System Administrator</strong>
+            <div style="font-size: 0.75rem; color: var(--text-muted);" id="user-display-role">Role: Admin • Cloud Session</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION 1: DASHBOARD OVERVIEW -->
+    <section id="section-dashboard" class="content-section active">
+      
+      <!-- KPI Stats Row -->
+      <div class="grid-4">
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Total Active Workforce</div>
+            <div class="stat-val" id="stat-total-emp">0</div>
+          </div>
+          <div class="stat-icon">👥</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Saudization Ratio</div>
+            <div class="stat-val" id="stat-saudization-pct">0%</div>
+          </div>
+          <div class="stat-icon">🇸🇦</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Monthly Payroll Cost</div>
+            <div class="stat-val" id="stat-monthly-payroll">SAR 0</div>
+          </div>
+          <div class="stat-icon">💰</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Pending Requests</div>
+            <div class="stat-val" id="stat-pending-leaves">0</div>
+          </div>
+          <div class="stat-icon">⌛</div>
+        </div>
+      </div>
+
+      <!-- Nitaqat Saudization Status Banner -->
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div id="nitaqat-banner" class="nitaqat-box" style="background: #059669;">
+          <div>
+            <h3 style="font-size: 1.2rem; margin-bottom: 4px;" id="nitaqat-band-name">Nitaqat Band: High Green</h3>
+            <p style="font-size: 0.9rem; opacity: 0.95;" id="nitaqat-status-desc">Compliant with Saudi Ministry of Human Resources standards</p>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 1.8rem; font-weight: 800;" id="nitaqat-ratio-display">0%</div>
+            <span class="badge" style="background: rgba(255,255,255,0.25); color: #fff;">Saudi Employees</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expiry Alerts & Department Distribution Grid -->
+      <div class="dashboard-dual-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px;">
+        <!-- Upcoming Expiration Alerts -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🚨 Critical Document Expiry Alerts</h3>
+            <span class="badge badge-critical" id="alert-count-badge">0 Alerts</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Document Type</th>
+                  <th>Expiry Date</th>
+                  <th>Remaining</th>
+                </tr>
+              </thead>
+              <tbody id="alerts-table-body">
+                <tr><td colspan="4" style="text-align: center;">Loading alerts...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Department Breakdown -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🏢 Workforce Distribution</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Headcount</th>
+                </tr>
+              </thead>
+              <tbody id="dept-dist-body">
+                <tr><td colspan="2" style="text-align: center;">Loading distribution...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- SECTION 2: EMPLOYEES DIRECTORY -->
+    <section id="section-employees" class="content-section">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Employee Directory</h3>
+          <button class="btn btn-primary" onclick="openAddEmployeeModal()">+ Add New Employee</button>
+        </div>
+
+        <!-- Filters Bar -->
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+          <input type="text" id="emp-search" class="form-control" style="max-width: 250px;" placeholder="Search name, code, Iqama..." oninput="loadEmployees()">
+          
+          <select id="emp-filter-saudi" class="form-control" style="max-width: 180px;" onchange="loadEmployees()">
+            <option value="">All Nationalities</option>
+            <option value="1">Saudi Nationals Only</option>
+            <option value="0">Expats Only</option>
+          </select>
+
+          <select id="emp-filter-dept" class="form-control" style="max-width: 200px;" onchange="loadEmployees()">
+            <option value="">All Departments</option>
+          </select>
+        </div>
+
+        <!-- Employees Table -->
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Employee Name</th>
+                <th>National ID / Iqama</th>
+                <th>Nationality</th>
+                <th>Department</th>
+                <th>Designation</th>
+                <th>Basic Salary</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="employees-table-body">
+              <tr><td colspan="9" style="text-align: center;">Loading employee records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: PAYROLL & WPS ENGINE -->
+    <section id="section-payroll" class="content-section">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Monthly Payroll & WPS Processing</h3>
+          <button class="btn btn-primary" onclick="openRunPayrollModal()">⚡ Process Monthly Payroll</button>
+        </div>
+        
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+          Generates employee monthly gross wages, GOSI contributions (Annuity + SANED + Occupational Hazard), net salaries, PDF Payslips, and Ministry WPS CSV output.
+        </p>
+
+        <h4 style="margin-bottom: 12px; color: var(--primary-dark);">Historical Payroll Runs</h4>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Pay Period</th>
+                <th>Total Basic</th>
+                <th>Total Allowances</th>
+                <th>Total Deductions (GOSI)</th>
+                <th>Total Net Disbursed</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="payroll-runs-body">
+              <tr><td colspan="8" style="text-align: center;">Loading payroll runs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: LEAVE MANAGEMENT -->
+    <section id="section-leaves" class="content-section">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Leave Applications & Approvals</h3>
+          <button class="btn btn-primary" onclick="openApplyLeaveModal()">+ Apply for Leave</button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Employee</th>
+                <th>Leave Type</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Days</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="leaves-table-body">
+              <tr><td colspan="9" style="text-align: center;">Loading leave records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: SAUDI COMPLIANCE HUB (EOSB & GOSI CALCULATORS) -->
+    <section id="section-compliance" class="content-section">
+      <div class="dashboard-dual-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        
+        <!-- EOSB Calculator per Article 84/85 -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">⚖️ End of Service Benefit (EOSB) Calculator</h3>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">
+            Saudi Labor Law Article 84 & 85 compliant calculation engine.
+          </p>
+
+          <div class="form-group">
+            <label>Monthly Basic Salary (SAR)</label>
+            <input type="number" id="eosb-basic" class="form-control" value="15000" oninput="runEosbCalc()">
+          </div>
+
+          <div class="form-group">
+            <label>Hire Date (Start Date)</label>
+            <input type="date" id="eosb-start" class="form-control" value="2019-01-01" onchange="runEosbCalc()">
+          </div>
+
+          <div class="form-group">
+            <label>Termination Date (End Date)</label>
+            <input type="date" id="eosb-end" class="form-control" value="2026-08-01" onchange="runEosbCalc()">
+          </div>
+
+          <div class="form-group">
+            <label>Reason for Separation</label>
+            <select id="eosb-reason" class="form-control" onchange="runEosbCalc()">
+              <option value="contract_ended">Fixed-Term Contract Completion (100% Payout)</option>
+              <option value="resignation">Employee Resignation (Article 85 Tiered Multiplier)</option>
+              <option value="termination">Employer Termination (100% Payout)</option>
+              <option value="force_majeure">Force Majeure (100% Payout)</option>
+              <option value="female_marriage">Female Resignation within 6m of Marriage (100%)</option>
+            </select>
+          </div>
+
+          <div id="eosb-result-box" style="background: #F0FDF4; border: 1px solid #86EFAC; padding: 15px; border-radius: 8px; margin-top: 15px;">
+            <div style="font-size: 0.85rem; color: #166534; font-weight: 600;">Calculated Entitlement:</div>
+            <div style="font-size: 1.6rem; font-weight: 800; color: #006C35;" id="eosb-net-val">SAR 0.00</div>
+            <div style="font-size: 0.8rem; color: #374151; margin-top: 5px;" id="eosb-notes-desc">Select inputs to calculate...</div>
+          </div>
+        </div>
+
+        <!-- GOSI Contribution Calculator -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🛡️ GOSI Contribution Calculator</h3>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">
+            Calculates Saudi Annuity + SANED + Occupational Hazards based on SAR 45,000 statutory cap.
+          </p>
+
+          <div class="form-group">
+            <label>Employee Nationality Type</label>
+            <select id="gosi-is-saudi" class="form-control" onchange="runGosiCalc()">
+              <option value="1">Saudi National (9.75% Emp + 11.75% Employer)</option>
+              <option value="0">Expat / Non-Saudi (2% Employer Hazard Only)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Basic Salary (SAR)</label>
+            <input type="number" id="gosi-basic" class="form-control" value="16000" oninput="runGosiCalc()">
+          </div>
+
+          <div class="form-group">
+            <label>Housing Allowance (SAR)</label>
+            <input type="number" id="gosi-housing" class="form-control" value="4000" oninput="runGosiCalc()">
+          </div>
+
+          <div id="gosi-result-box" style="background: #EFF6FF; border: 1px solid #BFDBFE; padding: 15px; border-radius: 8px; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span>Employee Share Deduction (9.75%):</span>
+              <strong id="gosi-emp-share" style="color: #1E40AF;">SAR 0.00</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span>Employer Share Contribution:</span>
+              <strong id="gosi-empr-share" style="color: #1E40AF;">SAR 0.00</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-top: 1px solid #93C5FD; padding-top: 8px;">
+              <strong>Total GOSI Monthly Premium:</strong>
+              <strong id="gosi-total-share" style="color: #1E3A8A; font-size: 1.1rem;">SAR 0.00</strong>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 6: SETTINGS & BACKUPS -->
+    <section id="section-settings" class="content-section">
+      <div class="card" style="margin-bottom: 20px; background: #ECFDF5; border-color: #A7F3D0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <h3 style="color: #065F46; font-size: 1.15rem; margin-bottom: 4px;">☁️ Automatic Google Drive Backup Engine</h3>
+            <p style="color: #047857; font-size: 0.88rem;">Generates a complete database and document vault zip archive and syncs directly to Google Drive.</p>
+          </div>
+          <button class="btn btn-success" onclick="triggerGoogleDriveBackup()">
+            ⚡ Execute Google Drive Backup Now
+          </button>
+        </div>
+        <div id="backup-status-banner" style="margin-top: 12px; display: none; padding: 10px; background: #FFFFFF; border-radius: 6px; border: 1px solid #6EE7B7; font-size: 0.85rem;"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Company & HR System Settings</h3>
+          <button class="btn btn-primary" onclick="saveSettings()">Save Configuration</button>
+        </div>
+
+        <form id="settings-form" class="form-grid">
+          <div class="form-group">
+            <label>Company Legal Name (English)</label>
+            <input type="text" id="set-company-name" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Company Name (Arabic)</label>
+            <input type="text" id="set-company-arabic-name" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Commercial Registration (CR) Number</label>
+            <input type="text" id="set-cr-number" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Ministry of Labor (MOL) Est. ID</label>
+            <input type="text" id="set-mol-id" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Company GOSI Registration Number</label>
+            <input type="text" id="set-gosi-number" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>WPS SAMA Payer Bank Code</label>
+            <input type="text" id="set-wps-bank-code" class="form-control">
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: ADD EMPLOYEE -->
+  <div id="modal-add-employee" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Add New Employee Profile</h3>
+        <button class="modal-close" onclick="closeModal('modal-add-employee')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="add-employee-form">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Employee Code *</label>
+              <input type="text" name="emp_code" class="form-control" required placeholder="EMP-007">
+            </div>
+            <div class="form-group">
+              <label>First Name (English) *</label>
+              <input type="text" name="first_name" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Last Name (English) *</label>
+              <input type="text" name="last_name" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Arabic Name</label>
+              <input type="text" name="arabic_name" class="form-control" placeholder="محمد علي">
+            </div>
+            <div class="form-group">
+              <label>National ID / Iqama Number *</label>
+              <input type="text" name="national_id_iqama" class="form-control" required placeholder="10xxxxxxxx or 20xxxxxxxx">
+            </div>
+            <div class="form-group">
+              <label>Nationality *</label>
+              <input type="text" name="nationality" class="form-control" required value="Saudi Arabia">
+            </div>
+            <div class="form-group">
+              <label>Is Saudi National? *</label>
+              <select name="is_saudi" class="form-control">
+                <option value="1">Yes (Saudi Citizen)</option>
+                <option value="0">No (Expat)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Email Address *</label>
+              <input type="email" name="email" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="text" name="phone" class="form-control" placeholder="+966501234567">
+            </div>
+            <div class="form-group">
+              <label>Department *</label>
+              <select name="department_id" id="add-emp-dept-select" class="form-control" required>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Designation / Job Title *</label>
+              <input type="text" name="designation" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Hire Date *</label>
+              <input type="date" name="hire_date" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Basic Salary (SAR) *</label>
+              <input type="number" name="basic_salary" class="form-control" required value="10000">
+            </div>
+            <div class="form-group">
+              <label>Housing Allowance (SAR)</label>
+              <input type="number" name="housing_allowance" class="form-control" value="2500">
+            </div>
+            <div class="form-group">
+              <label>Transport Allowance (SAR)</label>
+              <input type="number" name="transport_allowance" class="form-control" value="1000">
+            </div>
+            <div class="form-group">
+              <label>Bank Name</label>
+              <input type="text" name="bank_name" class="form-control" value="Al Rajhi Bank">
+            </div>
+            <div class="form-group">
+              <label>IBAN Number</label>
+              <input type="text" name="iban" class="form-control" placeholder="SA0000000000000000000000">
+            </div>
+            <div class="form-group">
+              <label>Iqama / ID Expiry Date</label>
+              <input type="date" name="iqama_expiry_date" class="form-control">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-add-employee')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddEmployee()">Save Employee</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: EMPLOYEE DETAIL & FILE VAULT -->
+  <div id="modal-emp-detail" class="modal-overlay">
+    <div class="modal-box" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="emp-detail-title">Employee Profile</h3>
+        <button class="modal-close" onclick="closeModal('modal-emp-detail')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Profile Header Box -->
+        <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px; background: #F8FAFC; padding: 15px; border-radius: 8px; flex-wrap: wrap;">
+          <div class="avatar-container">
+            <img id="detail-avatar" src="/static/css/default-avatar.svg" class="avatar-img">
+          </div>
+          <div style="flex-grow: 1;">
+            <h3 id="detail-emp-name" style="color: var(--primary-dark);">--</h3>
+            <p id="detail-emp-sub" style="color: var(--text-muted); font-size: 0.9rem;">--</p>
+            <div style="margin-top: 8px;">
+              <span id="detail-emp-nat-badge" class="badge">--</span>
+              <span id="detail-emp-status-badge" class="badge">--</span>
+            </div>
+          </div>
+          <div>
+            <label class="btn btn-outline" style="cursor: pointer;">
+              📷 Upload Photo
+              <input type="file" id="photo-upload-input" style="display: none;" accept="image/*" onchange="uploadEmployeePhoto()">
+            </label>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs-nav">
+          <div class="tab-btn active" onclick="switchTab('tab-info')">Personal & Job Info</div>
+          <div class="tab-btn" onclick="switchTab('tab-gosi')">GOSI & Financials</div>
+          <div class="tab-btn" onclick="switchTab('tab-docs')">📁 Document Vault</div>
+          <div class="tab-btn" onclick="switchTab('tab-leaves')">Leaves History</div>
+        </div>
+
+        <!-- TAB 1: INFO -->
+        <div id="tab-info" class="tab-content active">
+          <div class="form-grid" id="detail-info-grid">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- TAB 2: GOSI -->
+        <div id="tab-gosi" class="tab-content">
+          <div id="detail-gosi-box"></div>
+        </div>
+
+        <!-- TAB 3: DOCUMENTS & UPLOADS -->
+        <div id="tab-docs" class="tab-content">
+          <div style="background: #F1F5F9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px; color: var(--primary-dark);">Upload New Document (Iqama, Passport, Contract)</h4>
+            <form id="doc-upload-form" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+              <div>
+                <label style="font-size: 0.8rem; font-weight: 600;">Doc Type</label>
+                <select id="upload-doc-type" class="form-control" style="width: 150px;">
+                  <option value="Iqama/ID">Iqama / ID</option>
+                  <option value="Passport">Passport</option>
+                  <option value="Contract">Employment Contract</option>
+                  <option value="Medical">Medical Insurance</option>
+                  <option value="Certificate">Certificate</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.8rem; font-weight: 600;">Expiry Date</label>
+                <input type="date" id="upload-doc-expiry" class="form-control" style="width: 150px;">
+              </div>
+              <div style="flex-grow: 1;">
+                <label style="font-size: 0.8rem; font-weight: 600;">File (PDF, JPG, PNG)</label>
+                <input type="file" id="upload-doc-file" class="form-control" required>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="submitUploadDocument()">Upload</button>
+            </form>
+          </div>
+
+          <h4 style="margin-bottom: 10px;">Uploaded Document Records</h4>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Doc Type</th>
+                  <th>File Name</th>
+                  <th>Upload Date</th>
+                  <th>Expiry Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="detail-docs-body">
+                <tr><td colspan="5" style="text-align: center;">No documents uploaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 4: LEAVES -->
+        <div id="tab-leaves" class="tab-content">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Start Date</th>
+                  <th>End Date</th>
+                  <th>Days</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="detail-leaves-body">
+                <tr><td colspan="5" style="text-align: center;">No leave records found.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: RUN PAYROLL -->
+  <div id="modal-run-payroll" class="modal-overlay">
+    <div class="modal-box" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Run Monthly Payroll</h3>
+        <button class="modal-close" onclick="closeModal('modal-run-payroll')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Month</label>
+          <select id="payroll-month" class="form-control">
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8" selected>August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Select Year</label>
+          <input type="number" id="payroll-year" class="form-control" value="2026">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-run-payroll')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitGeneratePayroll()">Process & Calculate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: APPLY LEAVE -->
+  <div id="modal-apply-leave" class="modal-overlay">
+    <div class="modal-box" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Apply for Leave</h3>
+        <button class="modal-close" onclick="closeModal('modal-apply-leave')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="apply-leave-form">
+          <div class="form-group">
+            <label>Employee *</label>
+            <select name="employee_id" id="leave-emp-select" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label>Leave Type *</label>
+            <select name="leave_type" class="form-control" required>
+              <option value="Annual">Annual Vacation (الاجازة السنوية)</option>
+              <option value="Sick">Sick Leave (إجازة مرضية)</option>
+              <option value="Hajj">Hajj Leave (إجازة الحج)</option>
+              <option value="Marriage">Marriage Leave (إجازة زواج)</option>
+              <option value="Maternity">Maternity Leave (إجازة وضع)</option>
+              <option value="Paternity">Paternity Leave (إجازة مولود)</option>
+              <option value="Unpaid">Unpaid Leave</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Start Date *</label>
+            <input type="date" name="start_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>End Date *</label>
+            <input type="date" name="end_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Total Days *</label>
+            <input type="number" name="days" class="form-control" required value="5">
+          </div>
+          <div class="form-group">
+            <label>Reason / Remarks</label>
+            <textarea name="reason" class="form-control" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-apply-leave')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitApplyLeave()">Submit Application</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

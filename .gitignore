@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.env
+*.db
+server.log
+uploads/
+.vercel/
+node_modules/
