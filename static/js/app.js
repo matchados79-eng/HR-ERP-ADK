@@ -254,14 +254,14 @@ async function loadSupplierPayments() {
     if (!tbody) return;
 
     if (allSupplierPayments.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">No supplier payment records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center;">No supplier payment records found.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = allSupplierPayments.map(sp => {
       const tot = sp.amount || 0.0;
       const pd = sp.paid_amount || 0.0;
-      const rem = sp.remaining_amount !== undefined ? sp.remaining_amount : max(0, tot - pd);
+      const rem = sp.remaining_amount !== undefined ? sp.remaining_amount : Math.max(0, tot - pd);
 
       return `
         <tr>
@@ -277,6 +277,7 @@ async function loadSupplierPayments() {
               ${sp.status}
             </span>
           </td>
+          <td>${sp.remarks || 'N/A'}</td>
           <td>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
               ${rem > 0 && currentUserRole !== 'viewer' ? `
@@ -288,7 +289,7 @@ async function loadSupplierPayments() {
                 📜 PDF Statement
               </a>
               ${currentUserRole === 'admin' ? `
-                <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">Delete</button>
+                <button class="btn btn-danger" style="padding: 2px 8px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">Delete</button>
               ` : ''}
             </div>
           </td>
@@ -327,6 +328,11 @@ async function submitRecordSupplierPayment() {
     }
 
     closeModal('modal-record-supplier');
+    
+    // Clear status filter to show all invoices including newly created one
+    const statusFilter = document.getElementById('supplier-filter-status');
+    if (statusFilter) statusFilter.value = '';
+
     loadSupplierPayments();
     loadFinanceAnalytics();
     loadDashboardData();
@@ -381,8 +387,13 @@ async function submitDisburseSupplierPayment() {
     }
 
     const data = await res.json();
-    alert(`Payment of SAR ${amount.toLocaleString()} disbursed successfully!\nNew Remaining Balance: SAR ${data.remaining_amount.toLocaleString()}`);
+    alert(`Payment of SAR ${amount.toLocaleString()} disbursed successfully!\nNew Remaining Balance: SAR ${data.remaining_amount.toLocaleString()}\nStatus: ${data.status}`);
     closeModal('modal-disburse-supplier');
+
+    // Clear status filter so paid/settled invoice stays visible with green badge
+    const statusFilter = document.getElementById('supplier-filter-status');
+    if (statusFilter) statusFilter.value = '';
+
     loadSupplierPayments();
     loadFinanceAnalytics();
     loadDashboardData();
