@@ -1,4 +1,4 @@
-/* Saudi HR ERP System - Main JavaScript Application */
+/* Saudi HR ERP System - Main JavaScript Application with Authentication */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
@@ -6,15 +6,99 @@ let allDepartments = [];
 let allEmployees = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+  checkAuthSession();
+  runEosbCalc();
+  runGosiCalc();
+});
+
+// Authentication Handlers
+function checkAuthSession() {
+  const token = localStorage.getItem('jwt_token');
+  const userJson = localStorage.getItem('jwt_user');
+
+  if (!token) {
+    showLoginModal();
+    return;
+  }
+
+  if (userJson) {
+    try {
+      const u = JSON.parse(userJson);
+      document.getElementById('user-display-name').innerText = u.full_name || 'System Administrator';
+      document.getElementById('user-display-role').innerText = `Role: ${u.role || 'Admin'} • Active JWT Session`;
+    } catch (e) {}
+  }
+
+  hideLoginModal();
   loadDashboardData();
   loadDepartments();
   loadEmployees();
   loadPayrollRuns();
   loadLeaves();
   loadSettings();
-  runEosbCalc();
-  runGosiCalc();
-});
+}
+
+function showLoginModal() {
+  const m = document.getElementById('modal-login');
+  if (m) m.classList.add('active');
+}
+
+function hideLoginModal() {
+  const m = document.getElementById('modal-login');
+  if (m) m.classList.remove('active');
+}
+
+async function submitLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const errBox = document.getElementById('login-error-alert');
+
+  if (errBox) errBox.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      if (errBox) {
+        errBox.innerText = err.detail || 'Login failed. Please check credentials.';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+
+    const data = await res.json();
+    localStorage.setItem('jwt_token', data.access_token);
+    localStorage.setItem('jwt_user', JSON.stringify(data.user));
+
+    checkAuthSession();
+    alert(`Welcome, ${data.user.full_name}! Login successful.`);
+
+  } catch (err) {
+    if (errBox) {
+      errBox.innerText = `Network error: ${err}`;
+      errBox.style.display = 'block';
+    }
+  }
+}
+
+function logoutUser() {
+  localStorage.removeItem('jwt_token');
+  localStorage.removeItem('jwt_user');
+  showLoginModal();
+}
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('jwt_token') || '';
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
 
 // Navigation Switching
 function switchSection(sectionId) {
@@ -24,17 +108,15 @@ function switchSection(sectionId) {
   const targetSec = document.getElementById(`section-${sectionId}`);
   if (targetSec) targetSec.classList.add('active');
 
-  // Highlight Nav Item
   event.currentTarget.classList.add('active');
 
-  // Update Page Title
   const titleMap = {
     'dashboard': ['HR Dashboard', 'Comprehensive overview of Saudi workforce, Saudization rates, and pending actions'],
     'employees': ['Employee Directory', 'Manage employee profiles, Iqama details, GOSI numbers, and document vaults'],
     'payroll': ['Payroll & WPS Engine', 'Process monthly salaries, generate SAMA WPS CSV files, and print PDF payslips'],
     'leaves': ['Leave Management', 'Track annual leave balances, sick leave requests, and approval workflows'],
     'compliance': ['Saudi Compliance Hub', 'Interactive EOSB (Articles 84/85), GOSI contributions, and Nitaqat tools'],
-    'settings': ['System Settings', 'Configure company legal details, CR number, and WPS bank configurations']
+    'settings': ['System Settings & Backups', 'Configure company legal details, CR number, and Google Drive Backups']
   };
 
   if (titleMap[sectionId]) {
@@ -62,7 +144,7 @@ function closeModal(id) {
 // 1. DASHBOARD LOAD
 async function loadDashboardData() {
   try {
-    const res = await fetch('/api/dashboard/stats');
+    const res = await fetch('/api/dashboard/stats', { headers: getAuthHeaders() });
     const data = await res.json();
 
     document.getElementById('stat-total-emp').innerText = data.total_employees;
@@ -111,7 +193,7 @@ async function loadDashboardData() {
 // 2. DEPARTMENTS & EMPLOYEES
 async function loadDepartments() {
   try {
-    const res = await fetch('/api/departments');
+    const res = await fetch('/api/departments', { headers: getAuthHeaders() });
     allDepartments = await res.json();
 
     const addSelect = document.getElementById('add-emp-dept-select');
@@ -138,12 +220,11 @@ async function loadEmployees() {
     if (isSaudi !== '') url += `is_saudi=${isSaudi}&`;
     if (deptId) url += `department_id=${deptId}&`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: getAuthHeaders() });
     allEmployees = await res.json();
 
     const tbody = document.getElementById('employees-table-body');
     
-    // Also populate select dropdowns elsewhere
     const leaveEmpSelect = document.getElementById('leave-emp-select');
     if (leaveEmpSelect) {
       leaveEmpSelect.innerHTML = allEmployees.map(e => `<option value="${e.id}">${e.emp_code} - ${e.first_name} ${e.last_name}</option>`).join('');
@@ -202,7 +283,7 @@ async function submitAddEmployee() {
   try {
     const res = await fetch('/api/employees', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
 
@@ -228,7 +309,7 @@ async function viewEmployeeDetail(empId) {
   switchTab('tab-info');
 
   try {
-    const res = await fetch(`/api/employees/${empId}`);
+    const res = await fetch(`/api/employees/${empId}`, { headers: getAuthHeaders() });
     const data = await res.json();
 
     const emp = data.employee;
@@ -336,9 +417,12 @@ async function uploadEmployeePhoto() {
   const formData = new FormData();
   formData.append('file', file);
 
+  const token = localStorage.getItem('jwt_token') || '';
+
   try {
     const res = await fetch(`/api/employees/${currentEmployeeId}/photo`, {
       method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     });
 
@@ -374,9 +458,12 @@ async function submitUploadDocument() {
   if (expiryDate) formData.append('expiry_date', expiryDate);
   formData.append('file', fileInput.files[0]);
 
+  const token = localStorage.getItem('jwt_token') || '';
+
   try {
     const res = await fetch(`/api/employees/${currentEmployeeId}/documents`, {
       method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     });
 
@@ -398,7 +485,7 @@ async function submitUploadDocument() {
 // 4. PAYROLL & WPS
 async function loadPayrollRuns() {
   try {
-    const res = await fetch('/api/payroll/runs');
+    const res = await fetch('/api/payroll/runs', { headers: getAuthHeaders() });
     const runs = await res.json();
 
     const tbody = document.getElementById('payroll-runs-body');
@@ -445,7 +532,7 @@ async function submitGeneratePayroll() {
   try {
     const res = await fetch('/api/payroll/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ month, year })
     });
 
@@ -467,7 +554,7 @@ async function submitGeneratePayroll() {
 
 async function viewPayrollDetails(runId) {
   try {
-    const res = await fetch(`/api/payroll/runs/${runId}/details`);
+    const res = await fetch(`/api/payroll/runs/${runId}/details`, { headers: getAuthHeaders() });
     const data = await res.json();
 
     let popupContent = `
@@ -503,7 +590,6 @@ async function viewPayrollDetails(runId) {
       </div>
     `;
 
-    // Simple Alert/Modal presentation
     const m = document.createElement('div');
     m.className = 'modal-overlay active';
     m.innerHTML = `
@@ -525,7 +611,7 @@ async function viewPayrollDetails(runId) {
 // 5. LEAVES
 async function loadLeaves() {
   try {
-    const res = await fetch('/api/leaves');
+    const res = await fetch('/api/leaves', { headers: getAuthHeaders() });
     const leaves = await res.json();
 
     const tbody = document.getElementById('leaves-table-body');
@@ -573,7 +659,7 @@ async function submitApplyLeave() {
   try {
     const res = await fetch('/api/leaves', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
 
@@ -597,7 +683,7 @@ async function updateLeaveStatus(leaveId, status) {
   try {
     const res = await fetch(`/api/leaves/${leaveId}/status`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ status })
     });
 
@@ -625,7 +711,7 @@ async function runEosbCalc() {
   try {
     const res = await fetch('/api/calculators/eosb', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         basic_salary: basic,
         gross_salary: basic * 1.25,
@@ -657,7 +743,7 @@ async function runGosiCalc() {
   try {
     const res = await fetch('/api/calculators/gosi', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         is_saudi: isSaudi,
         basic_salary: basic,
@@ -678,7 +764,7 @@ async function runGosiCalc() {
 // 7. SETTINGS
 async function loadSettings() {
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { headers: getAuthHeaders() });
     const settings = await res.json();
 
     if (settings.company_name) document.getElementById('set-company-name').value = settings.company_name;
@@ -706,7 +792,7 @@ async function saveSettings() {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload)
     });
 
@@ -727,7 +813,7 @@ async function triggerGoogleDriveBackup() {
   try {
     const res = await fetch('/api/backup/google-drive', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: getAuthHeaders()
     });
 
     if (!res.ok) {

@@ -3,10 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Saudi HR ERP System - Production Cloud Portal</title>
+  <title>Saudi HR ERP System - Production Portal</title>
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
+
+  <!-- FULLSCREEN LOGIN OVERLAY -->
+  <div id="modal-login" class="modal-overlay active" style="z-index: 9999; background: #044223;">
+    <div class="modal-box" style="max-width: 420px; border-radius: 12px; border: 2px solid var(--secondary); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);">
+      <div style="background: var(--primary-dark); color: #FFF; padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 8px;">🇸🇦</div>
+        <h2 style="font-size: 1.5rem; font-weight: 800;">Saudi HR ERP Portal</h2>
+        <p style="font-size: 0.82rem; color: #A7F3D0; margin-top: 4px;">Al-Amal Enterprise Solutions KSA</p>
+      </div>
+      
+      <div class="modal-body" style="padding: 25px;">
+        <div id="login-error-alert" style="display: none; background: #FEE2E2; border: 1px solid #FCA5A5; color: #991B1B; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 15px; text-align: center;"></div>
+        
+        <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
+          <div class="form-group">
+            <label style="font-weight: 700;">Account Email Address *</label>
+            <input type="email" id="login-email" class="form-control" required value="admin@alamal-ksa.com" placeholder="user@alamal-ksa.com">
+          </div>
+          
+          <div class="form-group">
+            <label style="font-weight: 700;">Password *</label>
+            <input type="password" id="login-password" class="form-control" required value="AdminSecret123!" placeholder="••••••••">
+          </div>
+          
+          <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem; margin-top: 10px; justify-content: center;">
+            🔐 Sign In to HR Portal
+          </button>
+        </form>
+
+        <div style="background: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 0.78rem; color: #475569;">
+          <strong>Default Admin Credentials:</strong><br/>
+          • Email: <code>admin@alamal-ksa.com</code><br/>
+          • Password: <code>AdminSecret123!</code>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Sidebar -->
   <aside class="sidebar">
@@ -66,7 +103,7 @@
         <h1 id="page-heading">HR Dashboard</h1>
         <p id="page-subheading">Comprehensive overview of Saudi workforce, Saudization rates, and pending actions</p>
       </div>
-      <div style="display: flex; gap: 12px; align-items: center;">
+      <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
         <button class="btn btn-success" onclick="triggerGoogleDriveBackup()" style="box-shadow: var(--shadow-sm);">
           ☁️ Backup to Google Drive
         </button>
@@ -74,9 +111,12 @@
           <span style="font-size: 1.2rem;">🇸🇦</span>
           <div>
             <strong style="font-size: 0.9rem;" id="user-display-name">System Administrator</strong>
-            <div style="font-size: 0.75rem; color: var(--text-muted);" id="user-display-role">Role: Admin • Cloud Session</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);" id="user-display-role">Role: Admin • Active JWT Session</div>
           </div>
         </div>
+        <button class="btn btn-danger" onclick="logoutUser()" style="padding: 8px 12px; font-size: 0.82rem;">
+          🚪 Logout
+        </button>
       </div>
     </header>
 
