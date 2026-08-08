@@ -100,7 +100,7 @@
     
     <div class="sidebar-footer">
       <div>Ministry Compliant • SAMA WPS Ready</div>
-      <small>SME Finance & Analytics v3.3</small>
+      <small>SME Finance & Analytics v3.4</small>
     </div>
   </aside>
 
@@ -437,6 +437,42 @@
 
     <!-- SECTION 6: SUPPLIER PAYMENT TRACKING -->
     <section id="section-suppliers" class="content-section">
+      
+      <!-- Supplier Payment KPI Cards -->
+      <div class="grid-4" style="margin-bottom: 20px;">
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Total Vendor Invoiced</div>
+            <div class="stat-val" id="sp-kpi-total-billed" style="color: #1E3A8A;">SAR 0</div>
+          </div>
+          <div class="stat-icon">📄</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Total Disbursed / Settled</div>
+            <div class="stat-val" id="sp-kpi-total-paid" style="color: var(--primary);">SAR 0</div>
+          </div>
+          <div class="stat-icon">✅</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Outstanding Payable Balance</div>
+            <div class="stat-val" id="sp-kpi-total-remaining" style="color: var(--danger);">SAR 0</div>
+          </div>
+          <div class="stat-icon">⏳</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Overdue Vendor Liabilities</div>
+            <div class="stat-val" id="sp-kpi-total-overdue" style="color: #991B1B;">SAR 0</div>
+          </div>
+          <div class="stat-icon">⚠️</div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">🏢 Supplier Payment Tracking & Auto-Adjusting Balances</h3>
@@ -451,7 +487,7 @@
         <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
           <input type="text" id="supplier-search" class="form-control" style="max-width: 280px;" placeholder="Search vendor company, invoice #, details..." oninput="loadSupplierPayments()">
           
-          <select id="supplier-filter-status" class="form-control" style="max-width: 180px;" onchange="loadSupplierPayments()">
+          <select id="supplier-filter-status" class="form-control" style="max-width: 220px;" onchange="loadSupplierPayments()">
             <option value="">All Payment Statuses</option>
             <option value="Pending">Pending Payment</option>
             <option value="Partially Paid">Partially Paid</option>
@@ -768,7 +804,7 @@
           </div>
           <div class="form-group">
             <label>Notes / Remarks</label>
-            <input type="text" id="disburse-notes" class="form-control" placeholder="Partial payment installment #1">
+            <input type="text" id="disburse-notes" class="form-control" placeholder="Payment settlement">
           </div>
         </form>
       </div>
@@ -779,7 +815,124 @@
     </div>
   </div>
 
-  <!-- MODAL 3: EDIT USER ACCOUNT & CREDENTIALS -->
+  <!-- MODAL 3: VENDOR ACCOUNT LEDGER & STATEMENT -->
+  <div id="modal-vendor-ledger" class="modal-overlay">
+    <div class="modal-box" style="max-width: 850px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="vendor-ledger-title">Vendor Account Statement Ledger</h3>
+        <button class="modal-close" onclick="closeModal('modal-vendor-ledger')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="vendor-ledger-summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+          <!-- Populated via JS -->
+        </div>
+
+        <h4 style="margin-bottom: 10px; color: var(--primary-dark);">Historical Vendor Invoices</h4>
+        <div class="table-responsive" style="max-height: 250px; overflow-y: auto; margin-bottom: 20px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Invoice #</th>
+                <th>Invoice Date</th>
+                <th>Due Date</th>
+                <th>Details</th>
+                <th>Total Billed</th>
+                <th>Paid</th>
+                <th>Remaining</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="vendor-ledger-invoices-body">
+              <tr><td colspan="8" style="text-align: center;">Loading vendor invoices...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="margin-bottom: 10px; color: var(--primary-dark);">Disbursal Transactions Log</h4>
+        <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Method</th>
+                <th>Reference #</th>
+                <th>Amount Disbursed</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="vendor-ledger-logs-body">
+              <tr><td colspan="5" style="text-align: center;">Loading payment logs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-vendor-ledger')">Close Ledger</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: EDIT SUPPLIER INVOICE -->
+  <div id="modal-edit-supplier" class="modal-overlay">
+    <div class="modal-box" style="max-width: 550px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Supplier Invoice Record</h3>
+        <button class="modal-close" onclick="closeModal('modal-edit-supplier')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-supplier-form">
+          <input type="hidden" id="edit-supplier-id">
+          <div class="form-group">
+            <label>Company Name (Supplier / Vendor) *</label>
+            <input type="text" id="edit-supplier-company" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Invoice Number</label>
+            <input type="text" id="edit-supplier-invoice-num" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Invoice Date *</label>
+            <input type="date" id="edit-supplier-invoice-date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Due Date *</label>
+            <input type="date" id="edit-supplier-due-date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Supply Date *</label>
+            <input type="date" id="edit-supplier-supply-date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Invoice Details / Description *</label>
+            <textarea id="edit-supplier-details" class="form-control" rows="2" required></textarea>
+          </div>
+          <div class="form-group">
+            <label>Amount (SAR) *</label>
+            <input type="number" step="0.01" id="edit-supplier-amount" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Status *</label>
+            <select id="edit-supplier-status" class="form-control" required>
+              <option value="Pending">Pending Payment</option>
+              <option value="Approved">Approved for Payment</option>
+              <option value="Partially Paid">Partially Paid</option>
+              <option value="Paid">Fully Paid & Settled</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Remarks / Notes</label>
+            <input type="text" id="edit-supplier-remarks" class="form-control">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-edit-supplier')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditSupplierPayment()">Save Invoice Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: EDIT USER ACCOUNT & CREDENTIALS -->
   <div id="modal-edit-user" class="modal-overlay">
     <div class="modal-box" style="max-width: 480px;">
       <div class="modal-header">
@@ -818,7 +971,7 @@
     </div>
   </div>
 
-  <!-- MODAL 4: ADD EMPLOYEE -->
+  <!-- MODAL 6: ADD EMPLOYEE -->
   <div id="modal-add-employee" class="modal-overlay">
     <div class="modal-box">
       <div class="modal-header">
@@ -914,7 +1067,7 @@
     </div>
   </div>
 
-  <!-- MODAL 5: EMPLOYEE DETAIL & FILE VAULT -->
+  <!-- MODAL 7: EMPLOYEE DETAIL & FILE VAULT -->
   <div id="modal-emp-detail" class="modal-overlay">
     <div class="modal-box" style="max-width: 900px;">
       <div class="modal-header">
@@ -1032,7 +1185,7 @@
     </div>
   </div>
 
-  <!-- MODAL 6: RUN PAYROLL -->
+  <!-- MODAL 8: RUN PAYROLL -->
   <div id="modal-run-payroll" class="modal-overlay">
     <div class="modal-box" style="max-width: 450px;">
       <div class="modal-header">
@@ -1063,7 +1216,7 @@
     </div>
   </div>
 
-  <!-- MODAL 7: APPLY LEAVE -->
+  <!-- MODAL 9: APPLY LEAVE -->
   <div id="modal-apply-leave" class="modal-overlay">
     <div class="modal-box" style="max-width: 500px;">
       <div class="modal-header">

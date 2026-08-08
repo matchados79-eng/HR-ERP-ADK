@@ -1,4 +1,4 @@
-/* Saudi HR ERP System - Main JavaScript Application with Supplier Disbursal Ledger & PDF Export */
+/* Saudi HR ERP System - Main JavaScript Application with Robust Vendor Ledgers & Disbursals */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
@@ -237,7 +237,7 @@ async function loadDashboardData() {
   }
 }
 
-// 2. SUPPLIER PAYMENT TRACKING & AUTO-ADJUSTING BALANCES
+// 2. ROBUST SUPPLIER PAYMENT TRACKING & VENDOR LEDGERS
 async function loadSupplierPayments() {
   try {
     const search = document.getElementById('supplier-search') ? document.getElementById('supplier-search').value : '';
@@ -248,13 +248,29 @@ async function loadSupplierPayments() {
     if (status) url += `status=${encodeURIComponent(status)}&`;
 
     const res = await fetch(url, { headers: getAuthHeaders() });
-    allSupplierPayments = await res.json();
+    const payload = await res.json();
+
+    const sum = payload.summary;
+    allSupplierPayments = payload.payments;
+
+    // Update Top KPI Cards
+    if (document.getElementById('sp-kpi-total-billed')) {
+      let totBilled = allSupplierPayments.reduce((a, b) => a + (b.amount || 0), 0);
+      let totPaid = allSupplierPayments.reduce((a, b) => a + (b.paid_amount || 0), 0);
+      let totRem = sum.total_outstanding_payable || 0;
+      let totOver = sum.total_overdue_payable || 0;
+
+      document.getElementById('sp-kpi-total-billed').innerText = `SAR ${totBilled.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      document.getElementById('sp-kpi-total-paid').innerText = `SAR ${totPaid.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      document.getElementById('sp-kpi-total-remaining').innerText = `SAR ${totRem.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      document.getElementById('sp-kpi-total-overdue').innerText = `SAR ${totOver.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    }
 
     const tbody = document.getElementById('supplier-payments-body');
     if (!tbody) return;
 
     if (allSupplierPayments.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center;">No supplier payment records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">No supplier payment records found.</td></tr>`;
       return;
     }
 
@@ -266,7 +282,11 @@ async function loadSupplierPayments() {
       return `
         <tr>
           <td>#INV-${sp.id}</td>
-          <td><strong>${sp.company_name}</strong><br/><small>${sp.invoice_number || 'N/A'}</small></td>
+          <td>
+            <a href="javascript:void(0)" style="font-weight: 700; color: var(--primary-dark); text-decoration: underline;" onclick="openVendorLedgerModal('${sp.company_name.replace(/'/g, "\\'")}')">
+              ${sp.company_name}
+            </a>
+          </td>
           <td><code>${sp.invoice_number || 'N/A'}</code></td>
           <td>${sp.due_date}</td>
           <td>SAR ${tot.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
@@ -277,12 +297,16 @@ async function loadSupplierPayments() {
               ${sp.status}
             </span>
           </td>
-          <td>${sp.remarks || 'N/A'}</td>
           <td>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
               ${rem > 0 && currentUserRole !== 'viewer' ? `
                 <button class="btn btn-success" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openDisburseSupplierPaymentModal(${sp.id}, '${sp.company_name.replace(/'/g, "\\'")}', ${rem})">
                   💳 Partial / Disburse
+                </button>
+              ` : ''}
+              ${currentUserRole !== 'viewer' ? `
+                <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openEditSupplierModal(${sp.id})">
+                  ✏️ Edit
                 </button>
               ` : ''}
               <a href="/api/suppliers/payments/${sp.id}/statement.pdf" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">
@@ -329,7 +353,6 @@ async function submitRecordSupplierPayment() {
 
     closeModal('modal-record-supplier');
     
-    // Clear status filter to show all invoices including newly created one
     const statusFilter = document.getElementById('supplier-filter-status');
     if (statusFilter) statusFilter.value = '';
 
@@ -340,6 +363,127 @@ async function submitRecordSupplierPayment() {
 
   } catch (err) {
     alert(`Failed to record supplier payment: ${err}`);
+  }
+}
+
+function openEditSupplierModal(spId) {
+  const sp = allSupplierPayments.find(x => x.id === spId);
+  if (!sp) return;
+
+  document.getElementById('edit-supplier-id').value = sp.id;
+  document.getElementById('edit-supplier-company').value = sp.company_name;
+  document.getElementById('edit-supplier-invoice-num').value = sp.invoice_number || '';
+  document.getElementById('edit-supplier-invoice-date').value = sp.invoice_date;
+  document.getElementById('edit-supplier-due-date').value = sp.due_date;
+  document.getElementById('edit-supplier-supply-date').value = sp.supply_date;
+  document.getElementById('edit-supplier-details').value = sp.invoice_details || '';
+  document.getElementById('edit-supplier-amount').value = sp.amount;
+  document.getElementById('edit-supplier-status').value = sp.status;
+  document.getElementById('edit-supplier-remarks').value = sp.remarks || '';
+
+  openModal('modal-edit-supplier');
+}
+
+async function submitEditSupplierPayment() {
+  const spId = document.getElementById('edit-supplier-id').value;
+  const payload = {
+    company_name: document.getElementById('edit-supplier-company').value,
+    invoice_number: document.getElementById('edit-supplier-invoice-num').value,
+    invoice_date: document.getElementById('edit-supplier-invoice-date').value,
+    due_date: document.getElementById('edit-supplier-due-date').value,
+    supply_date: document.getElementById('edit-supplier-supply-date').value,
+    invoice_details: document.getElementById('edit-supplier-details').value,
+    amount: parseFloat(document.getElementById('edit-supplier-amount').value || 0),
+    status: document.getElementById('edit-supplier-status').value,
+    remarks: document.getElementById('edit-supplier-remarks').value
+  };
+
+  try {
+    const res = await fetch(`/api/suppliers/payments/${spId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Error updating supplier payment: ${err.detail}`);
+      return;
+    }
+
+    alert('Supplier payment invoice updated successfully!');
+    closeModal('modal-edit-supplier');
+    loadSupplierPayments();
+    loadFinanceAnalytics();
+    loadDashboardData();
+
+  } catch (err) {
+    alert(`Failed to update supplier invoice: ${err}`);
+  }
+}
+
+async function openVendorLedgerModal(companyName) {
+  openModal('modal-vendor-ledger');
+  document.getElementById('vendor-ledger-title').innerText = `Vendor Account Ledger Statement: ${companyName}`;
+
+  try {
+    const res = await fetch(`/api/suppliers/vendors/${encodeURIComponent(companyName)}/ledger`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const sum = data.summary;
+    document.getElementById('vendor-ledger-summary-grid').innerHTML = `
+      <div style="background: #EFF6FF; padding: 12px; border-radius: 6px; border: 1px solid #BFDBFE;">
+        <div style="font-size: 0.75rem; color: #1E40AF; font-weight: 600;">Total Invoices Count</div>
+        <div style="font-size: 1.3rem; font-weight: 800; color: #1E3A8A;">${sum.total_invoices_count} Invoices</div>
+      </div>
+      <div style="background: #F8FAFC; padding: 12px; border-radius: 6px; border: 1px solid #CBD5E1;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Total Billed Amount</div>
+        <div style="font-size: 1.3rem; font-weight: 800; color: var(--text-main);">SAR ${sum.total_billed.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+      </div>
+      <div style="background: #ECFDF5; padding: 12px; border-radius: 6px; border: 1px solid #A7F3D0;">
+        <div style="font-size: 0.75rem; color: #065F46; font-weight: 600;">Total Disbursed Paid</div>
+        <div style="font-size: 1.3rem; font-weight: 800; color: var(--primary);">SAR ${sum.total_paid.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+      </div>
+      <div style="background: #FEF2F2; padding: 12px; border-radius: 6px; border: 1px solid #FCA5A5;">
+        <div style="font-size: 0.75rem; color: #991B1B; font-weight: 600;">Outstanding Balance Due</div>
+        <div style="font-size: 1.3rem; font-weight: 800; color: var(--danger);">SAR ${sum.total_balance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+      </div>
+    `;
+
+    // Render Invoices
+    const invBody = document.getElementById('vendor-ledger-invoices-body');
+    invBody.innerHTML = data.invoices.map(i => `
+      <tr>
+        <td><code>${i.invoice_number || 'N/A'}</code></td>
+        <td>${i.invoice_date}</td>
+        <td>${i.due_date}</td>
+        <td>${i.invoice_details || 'N/A'}</td>
+        <td>SAR ${i.amount.toLocaleString()}</td>
+        <td>SAR ${i.paid_amount.toLocaleString()}</td>
+        <td><strong>SAR ${i.remaining_amount.toLocaleString()}</strong></td>
+        <td><span class="badge ${i.status === 'Paid' ? 'badge-saudi' : 'badge-pending'}">${i.status}</span></td>
+      </tr>
+    `).join('');
+
+    // Render Disbursal Logs
+    const logsBody = document.getElementById('vendor-ledger-logs-body');
+    if (data.payment_logs.length === 0) {
+      logsBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No disbursal transactions logged yet.</td></tr>`;
+    } else {
+      logsBody.innerHTML = data.payment_logs.map(l => `
+        <tr>
+          <td>${l.payment_date}</td>
+          <td>${l.payment_method}</td>
+          <td><code>${l.reference_number || 'N/A'}</code></td>
+          <td><strong style="color: var(--primary);">SAR ${l.payment_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
+          <td>${l.notes || 'N/A'}</td>
+        </tr>
+      `).join('');
+    }
+
+  } catch (err) {
+    alert(`Failed to load vendor ledger: ${err}`);
   }
 }
 
@@ -390,7 +534,6 @@ async function submitDisburseSupplierPayment() {
     alert(`Payment of SAR ${amount.toLocaleString()} disbursed successfully!\nNew Remaining Balance: SAR ${data.remaining_amount.toLocaleString()}\nStatus: ${data.status}`);
     closeModal('modal-disburse-supplier');
 
-    // Clear status filter so paid/settled invoice stays visible with green badge
     const statusFilter = document.getElementById('supplier-filter-status');
     if (statusFilter) statusFilter.value = '';
 

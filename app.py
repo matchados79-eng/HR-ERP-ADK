@@ -27,9 +27,9 @@ from pdf_generator import generate_payslip_pdf, generate_supplier_statement_pdf
 db.init_db()
 
 app = FastAPI(
-    title="Saudi HR ERP System - SME Finance Edition",
-    description="Production-grade Saudi HR, Payroll & Finance ERP System with Supplier Payment History & PDF Statement Export",
-    version="3.3.0"
+    title="Saudi HR & SME Finance ERP System",
+    description="Production-grade Saudi HR, Payroll & Finance ERP System with Accounts Payable, Vendor Ledgers, and PDF Export",
+    version="3.4.0"
 )
 
 # Enable CORS for local & Vercel access
@@ -175,7 +175,7 @@ def delete_user_account(user_id: int, user: dict = Depends(require_roles(["admin
     db.execute_cmd("DELETE FROM users WHERE id = ?", (user_id,))
     return {"message": "User account deleted successfully"}
 
-# --- Supplier Payment Tracking & Auto-Adjusting Balances Endpoints ---
+# --- Robust Supplier Payment & Vendor Ledger Endpoints ---
 @app.get("/api/suppliers/payments")
 def list_supplier_payments(
     search: Optional[str] = None,
@@ -198,7 +198,51 @@ def list_supplier_payments(
     raw_payments = db.query_all(sql, tuple(params))
     
     aging_res = SaudiHREngine.calculate_accounts_payable_aging(raw_payments)
-    return aging_res["processed_payments"]
+    return {
+        "summary": aging_res["summary"],
+        "payments": aging_res["processed_payments"]
+    }
+
+@app.get("/api/suppliers/vendors")
+def list_vendor_summaries(user: dict = Depends(get_current_user)):
+    sql = """
+        SELECT company_name,
+               COUNT(id) as total_invoices,
+               SUM(amount) as total_billed,
+               SUM(paid_amount) as total_paid,
+               SUM(remaining_amount) as total_outstanding,
+               MAX(due_date) as latest_due_date
+        FROM supplier_payments
+        GROUP BY company_name
+        ORDER BY total_outstanding DESC
+    """
+    return db.query_all(sql)
+
+@app.get("/api/suppliers/vendors/{company_name}/ledger")
+def get_vendor_ledger(company_name: str, user: dict = Depends(get_current_user)):
+    invoices = db.query_all("SELECT * FROM supplier_payments WHERE company_name = ? ORDER BY id DESC", (company_name,))
+    if not invoices:
+        raise HTTPException(status_code=404, detail="Vendor company not found.")
+        
+    invoice_ids = [inv["id"] for inv in invoices]
+    placeholders = ",".join("?" * len(invoice_ids))
+    logs = db.query_all(f"SELECT * FROM supplier_payment_logs WHERE supplier_payment_id IN ({placeholders}) ORDER BY id DESC", tuple(invoice_ids)) if invoice_ids else []
+    
+    total_billed = sum(float(i["amount"]) for i in invoices)
+    total_paid = sum(float(i["paid_amount"]) for i in invoices)
+    total_balance = sum(float(i["remaining_amount"]) for i in invoices)
+    
+    return {
+        "company_name": company_name,
+        "summary": {
+            "total_invoices_count": len(invoices),
+            "total_billed": round(total_billed, 2),
+            "total_paid": round(total_paid, 2),
+            "total_balance": round(total_balance, 2)
+        },
+        "invoices": invoices,
+        "payment_logs": logs
+    }
 
 @app.post("/api/suppliers/payments")
 def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
@@ -224,6 +268,45 @@ def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(req
         
     return {"message": "Supplier payment record created successfully", "id": sp_id}
 
+@app.put("/api/suppliers/payments/{sp_id}")
+def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier payment record not found.")
+        
+    current_paid = float(sp["paid_amount"])
+    new_amount = float(req.amount)
+    new_remaining = max(0.0, new_amount - current_paid)
+    
+    if new_remaining <= 0:
+        new_status = "Paid"
+        new_remaining = 0.0
+    elif current_paid > 0:
+        new_status = "Partially Paid"
+    else:
+        new_status = req.status
+        
+    db.execute_cmd("""
+        UPDATE supplier_payments SET
+            company_name = ?,
+            invoice_number = ?,
+            invoice_date = ?,
+            due_date = ?,
+            invoice_details = ?,
+            supply_date = ?,
+            amount = ?,
+            remaining_amount = ?,
+            status = ?,
+            remarks = ?
+        WHERE id = ?
+    """, (
+        req.company_name, req.invoice_number, req.invoice_date, req.due_date,
+        req.invoice_details, req.supply_date, new_amount, new_remaining,
+        new_status, req.remarks, sp_id
+    ))
+    
+    return {"message": "Supplier payment record updated successfully"}
+
 @app.post("/api/suppliers/payments/{sp_id}/disburse")
 def disburse_supplier_payment(
     sp_id: int,
@@ -239,14 +322,12 @@ def disburse_supplier_payment(
         
     pay_date = req.payment_date or date.today().strftime("%Y-%m-%d")
     
-    # 1. Log payment transaction
     db.execute_cmd("""
         INSERT INTO supplier_payment_logs (
             supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (sp_id, req.payment_amount, pay_date, req.payment_method or "Bank Transfer", req.reference_number, req.notes, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     
-    # 2. Recalculate auto-adjusting paid & remaining amounts
     total_paid_row = db.query_one("SELECT SUM(payment_amount) as tot FROM supplier_payment_logs WHERE supplier_payment_id = ?", (sp_id,))
     total_paid = float(total_paid_row["tot"] or 0.0)
     
