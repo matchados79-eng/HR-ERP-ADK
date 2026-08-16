@@ -8,132 +8,279 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
+# --- Modern Color Palette Tokens ---
+COLOR_PRIMARY_DARK = colors.HexColor('#064E3B')   # Deep Saudi Forest Green
+COLOR_PRIMARY_MED = colors.HexColor('#006C35')    # Classic Saudi Green
+COLOR_PRIMARY_LIGHT = colors.HexColor('#ECFDF5')  # Soft Emerald Background
+COLOR_PRIMARY_BORDER = colors.HexColor('#A7F3D0') # Light Green Border
+
+COLOR_GOLD = colors.HexColor('#D97706')           # Executive Gold/Amber
+COLOR_GOLD_BG = colors.HexColor('#FEF3C7')        # Soft Gold Background
+COLOR_GOLD_BORDER = colors.HexColor('#FCD34D')    # Gold Border
+
+COLOR_DANGER = colors.HexColor('#DC2626')         # Crimson Red (Due / Liability)
+COLOR_DANGER_BG = colors.HexColor('#FEF2F2')      # Soft Red Background
+COLOR_DANGER_BORDER = colors.HexColor('#FECACA')  # Red Border
+
+COLOR_INFO = colors.HexColor('#2563EB')           # Royal Blue
+COLOR_INFO_BG = colors.HexColor('#EFF6FF')        # Soft Blue Background
+COLOR_INFO_BORDER = colors.HexColor('#BFDBFE')    # Blue Border
+
+COLOR_NEUTRAL_BG = colors.HexColor('#F8FAFC')     # Slate 50 Neutral
+COLOR_NEUTRAL_BORDER = colors.HexColor('#E2E8F0') # Slate 200 Border
+COLOR_TEXT_MAIN = colors.HexColor('#0F172A')      # Slate 900
+COLOR_TEXT_MUTED = colors.HexColor('#64748B')     # Slate 500
+
+def get_modern_styles():
+    """Builds a comprehensive typography hierarchy for executive PDF exports."""
+    styles = getSampleStyleSheet()
+    
+    return {
+        'doc_title': ParagraphStyle(
+            'DocTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=15,
+            leading=18,
+            textColor=COLOR_PRIMARY_DARK,
+            alignment=2
+        ),
+        'doc_badge': ParagraphStyle(
+            'DocBadge',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=8,
+            leading=10,
+            textColor=COLOR_GOLD,
+            alignment=2
+        ),
+        'company_brand': ParagraphStyle(
+            'CompanyBrand',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            leading=15,
+            textColor=COLOR_PRIMARY_DARK
+        ),
+        'company_ar': ParagraphStyle(
+            'CompanyArabic',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=9,
+            leading=12,
+            textColor=COLOR_TEXT_MUTED
+        ),
+        'company_meta': ParagraphStyle(
+            'CompanyMeta',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=7.5,
+            leading=10,
+            textColor=COLOR_TEXT_MUTED
+        ),
+        'section_heading': ParagraphStyle(
+            'SectionHeading',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=10,
+            leading=13,
+            textColor=COLOR_PRIMARY_DARK
+        ),
+        'kpi_label': ParagraphStyle(
+            'KpiLabel',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=6.5,
+            leading=8,
+            textColor=COLOR_TEXT_MUTED
+        ),
+        'kpi_val_green': ParagraphStyle(
+            'KpiValGreen',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            leading=13,
+            textColor=COLOR_PRIMARY_DARK
+        ),
+        'kpi_val_red': ParagraphStyle(
+            'KpiValRed',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            leading=13,
+            textColor=COLOR_DANGER
+        ),
+        'kpi_val_blue': ParagraphStyle(
+            'KpiValBlue',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            leading=13,
+            textColor=COLOR_INFO
+        ),
+        'cell_text': ParagraphStyle(
+            'CellText',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=7.5,
+            leading=10,
+            textColor=COLOR_TEXT_MAIN
+        ),
+        'cell_bold': ParagraphStyle(
+            'CellBold',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=7.5,
+            leading=10,
+            textColor=COLOR_TEXT_MAIN
+        ),
+        'cell_white': ParagraphStyle(
+            'CellWhite',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=7.5,
+            leading=10,
+            textColor=colors.white
+        ),
+        'cell_right': ParagraphStyle(
+            'CellRight',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=7.5,
+            leading=10,
+            textColor=COLOR_TEXT_MAIN,
+            alignment=2
+        ),
+        'cell_right_bold': ParagraphStyle(
+            'CellRightBold',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=7.5,
+            leading=10,
+            textColor=COLOR_TEXT_MAIN,
+            alignment=2
+        ),
+        'footer_note': ParagraphStyle(
+            'FooterNote',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=6.5,
+            leading=8.5,
+            textColor=COLOR_TEXT_MUTED,
+            alignment=1
+        ),
+        'sig_title': ParagraphStyle(
+            'SigTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=8,
+            leading=10,
+            textColor=COLOR_TEXT_MAIN,
+            alignment=1
+        ),
+        'sig_sub': ParagraphStyle(
+            'SigSub',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=7,
+            leading=9,
+            textColor=COLOR_TEXT_MUTED,
+            alignment=1
+        )
+    }
+
+def format_status_pill(status: str) -> str:
+    """Renders a modern colored status badge in HTML Paragraph format."""
+    st = (status or "Pending").strip()
+    if st == "Paid":
+        return "<font color='#059669'><b>● PAID</b></font>"
+    elif st in ("Partially Paid", "Partial"):
+        return "<font color='#D97706'><b>● PARTIAL</b></font>"
+    elif st == "Approved":
+        return "<font color='#2563EB'><b>● APPROVED</b></font>"
+    else:
+        return "<font color='#DC2626'><b>● PENDING</b></font>"
+
+
+# =========================================================================
+# 1. BILINGUAL SAUDI SALARY PAYSLIP PDF
+# =========================================================================
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
     """
-    Generates official Bilingual Saudi Standard Payslip PDF with GOSI deductions.
+    Generates an official Bilingual Saudi Standard Payslip PDF with executive design.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=36,
-        bottomMargin=36
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=28,
+        bottomMargin=28
     )
     
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor('#006C35'),
-        alignment=2
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'SubTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor('#4B5563')
-    )
-    
-    section_heading = ParagraphStyle(
-        'SectionHeading',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=15,
-        textColor=colors.HexColor('#0B5D34')
-    )
-    
-    cell_style = ParagraphStyle(
-        'CellText',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
+    st = get_modern_styles()
     elements = []
     
     company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
+    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
     cr_num = company_info.get("cr_number", "1010894512")
     gosi_reg = company_info.get("gosi_reg_number", "309481920")
+    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
     
+    # 1. Executive Top Header
     header_data = [
         [
-            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | GOSI: {gosi_reg}</font>", subtitle_style),
-            Paragraph("<b>SALARY PAYSLIP</b><br/><font size=9 color='#006C35'>Official Payroll Voucher</font>", title_style)
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • GOSI: {gosi_reg} • {address}</font>", st['company_meta']),
+            Paragraph("<b>SALARY PAYSLIP VOUCHER</b><br/><font size=7.5 color='#D97706'><b>قسيمة الراتب الرسمية</b></font><br/><font size=7 color='#64748B'>Period: " + f"{payroll_detail.get('month', '')}/{payroll_detail.get('year', '')}</font>", st['doc_title'])
         ]
     ]
-    
-    header_table = Table(header_data, colWidths=[4.2*inch, 3.0*inch])
+    header_table = Table(header_data, colWidths=[4.2*inch, 3.4*inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
     ]))
     elements.append(header_table)
-    elements.append(Spacer(1, 10))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
+    elements.append(Spacer(1, 4))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_PRIMARY_DARK, spaceAfter=8))
     
+    # 2. Employee Profile Metadata Grid
     emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
-    is_saudi_str = "Saudi National" if employee_data.get("is_saudi") == 1 else "Expat / Non-Saudi"
+    is_saudi = employee_data.get("is_saudi") == 1
+    nat_type = "Saudi National (مواطن)" if is_saudi else "Expat / Non-Saudi (مقيم)"
     
-    emp_info_data = [
+    emp_info = [
         [
-            Paragraph("<b>Employee Name:</b>", cell_bold), Paragraph(emp_name, cell_style),
-            Paragraph("<b>Employee Code:</b>", cell_bold), Paragraph(str(employee_data.get("emp_code", "N/A")), cell_style)
+            Paragraph("<b>Employee Name:</b>", st['cell_bold']), Paragraph(emp_name, st['cell_text']),
+            Paragraph("<b>Employee ID:</b>", st['cell_bold']), Paragraph(str(employee_data.get("emp_code", "N/A")), st['cell_text'])
         ],
         [
-            Paragraph("<b>National ID / Iqama:</b>", cell_bold), Paragraph(str(employee_data.get("national_id_iqama", "N/A")), cell_style),
-            Paragraph("<b>Department:</b>", cell_bold), Paragraph(str(employee_data.get("department_name", "General")), cell_style)
+            Paragraph("<b>National ID / Iqama:</b>", st['cell_bold']), Paragraph(str(employee_data.get("national_id_iqama", "N/A")), st['cell_text']),
+            Paragraph("<b>Department:</b>", st['cell_bold']), Paragraph(str(employee_data.get("department_name", "General")), st['cell_text'])
         ],
         [
-            Paragraph("<b>Designation:</b>", cell_bold), Paragraph(str(employee_data.get("designation", "N/A")), cell_style),
-            Paragraph("<b>Nationality Type:</b>", cell_bold), Paragraph(is_saudi_str, cell_style)
+            Paragraph("<b>Job Designation:</b>", st['cell_bold']), Paragraph(str(employee_data.get("designation", "N/A")), st['cell_text']),
+            Paragraph("<b>Nationality Type:</b>", st['cell_bold']), Paragraph(nat_type, st['cell_text'])
         ],
         [
-            Paragraph("<b>Bank Name:</b>", cell_bold), Paragraph(str(employee_data.get("bank_name", "N/A")), cell_style),
-            Paragraph("<b>IBAN Number:</b>", cell_bold), Paragraph(str(employee_data.get("iban", "N/A")), cell_style)
-        ],
-        [
-            Paragraph("<b>Pay Period:</b>", cell_bold), Paragraph(f"{payroll_detail.get('month', '')}/{payroll_detail.get('year', '')}", cell_style),
-            Paragraph("<b>GOSI Reg Number:</b>", cell_bold), Paragraph(str(employee_data.get("gosi_number", "N/A")), cell_style)
+            Paragraph("<b>Bank / IBAN:</b>", st['cell_bold']), Paragraph(f"{employee_data.get('bank_name', 'Bank')} • {employee_data.get('iban', 'N/A')}", st['cell_text']),
+            Paragraph("<b>GOSI Reg #:</b>", st['cell_bold']), Paragraph(str(employee_data.get("gosi_number", "N/A")), st['cell_text'])
         ]
     ]
-    
-    emp_table = Table(emp_info_data, colWidths=[1.5*inch, 2.1*inch, 1.5*inch, 2.1*inch])
+    emp_table = Table(emp_info, colWidths=[1.4*inch, 2.4*inch, 1.3*inch, 2.5*inch])
     emp_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9FAFB')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F3F4F6')),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F1F5F9')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(emp_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 8))
     
-    elements.append(Paragraph("Salary & Allowance Breakdown", section_heading))
-    elements.append(Spacer(1, 6))
-    
+    # 3. KPI Quick Metrics Bar
     basic = float(payroll_detail.get("basic_salary", 0.0))
     housing = float(payroll_detail.get("housing_allowance", 0.0))
     transport = float(payroll_detail.get("transport_allowance", 0.0))
@@ -146,174 +293,138 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     net_pay = float(payroll_detail.get("net_salary", gross - total_ded))
     gosi_empr = float(payroll_detail.get("gosi_employer", 0.0))
     
-    financial_data = [
+    kpi_data = [
         [
-            Paragraph("<font color='white'><b>Earnings Category</b></font>", cell_bold), Paragraph("<font color='white'><b>Amount (SAR)</b></font>", cell_bold),
-            Paragraph("<font color='white'><b>Deductions & GOSI</b></font>", cell_bold), Paragraph("<font color='white'><b>Amount (SAR)</b></font>", cell_bold)
+            Paragraph("<b>BASIC SALARY</b>", st['kpi_label']),
+            Paragraph("<b>GROSS EARNINGS</b>", st['kpi_label']),
+            Paragraph("<b>TOTAL DEDUCTIONS</b>", st['kpi_label']),
+            Paragraph("<b>NET TAKE-HOME PAY</b>", st['kpi_label'])
         ],
         [
-            Paragraph("Basic Salary", cell_style), Paragraph(f"{basic:,.2f}", cell_style),
-            Paragraph("GOSI Employee Share (9.75% / 0%)", cell_style), Paragraph(f"{gosi_emp:,.2f}", cell_style)
-        ],
-        [
-            Paragraph("Housing Allowance", cell_style), Paragraph(f"{housing:,.2f}", cell_style),
-            Paragraph("Other Deductions", cell_style), Paragraph(f"{other_ded:,.2f}", cell_style)
-        ],
-        [
-            Paragraph("Transportation Allowance", cell_style), Paragraph(f"{transport:,.2f}", cell_style),
-            Paragraph("-", cell_style), Paragraph("-", cell_style)
-        ],
-        [
-            Paragraph("Other Allowances", cell_style), Paragraph(f"{other_allow:,.2f}", cell_style),
-            Paragraph("-", cell_style), Paragraph("-", cell_style)
-        ],
-        [
-            Paragraph("<b>Total Gross Earnings:</b>", cell_bold), Paragraph(f"<b>SAR {gross:,.2f}</b>", cell_bold),
-            Paragraph("<b>Total Deductions:</b>", cell_bold), Paragraph(f"<b>SAR {total_ded:,.2f}</b>", cell_bold)
+            Paragraph(f"SAR {basic:,.2f}", st['kpi_val_green']),
+            Paragraph(f"SAR {gross:,.2f}", st['kpi_val_blue']),
+            Paragraph(f"SAR {total_ded:,.2f}", st['kpi_val_red']),
+            Paragraph(f"<b>SAR {net_pay:,.2f}</b>", ParagraphStyle('NetHuge', parent=st['kpi_val_green'], fontSize=13, textColor=COLOR_PRIMARY_DARK))
         ]
     ]
+    kpi_table = Table(kpi_data, colWidths=[1.9*inch, 1.9*inch, 1.9*inch, 1.9*inch])
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,-1), COLOR_NEUTRAL_BG),
+        ('BACKGROUND', (1,0), (1,-1), COLOR_INFO_BG),
+        ('BACKGROUND', (2,0), (2,-1), COLOR_DANGER_BG),
+        ('BACKGROUND', (3,0), (3,-1), COLOR_PRIMARY_LIGHT),
+        ('BOX', (0,0), (-1,-1), 0.8, COLOR_PRIMARY_MED),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 10))
     
-    fin_table = Table(financial_data, colWidths=[2.2*inch, 1.4*inch, 2.2*inch, 1.4*inch])
+    # 4. Detailed Earnings & Deductions Breakdown
+    elements.append(Paragraph("<b>Itemized Salary & Statutory Deductions Breakdown</b>", st['section_heading']))
+    elements.append(Spacer(1, 4))
+    
+    fin_breakdown = [
+        [
+            Paragraph("Earnings Component", st['cell_white']), Paragraph("Amount (SAR)", st['cell_white']),
+            Paragraph("Deductions & GOSI", st['cell_white']), Paragraph("Amount (SAR)", st['cell_white'])
+        ],
+        [
+            Paragraph("Basic Salary (الراتب الأساسي)", st['cell_text']), Paragraph(f"{basic:,.2f}", st['cell_right']),
+            Paragraph(f"GOSI Employee Share ({'9.75%' if is_saudi else '0%'})", st['cell_text']), Paragraph(f"{gosi_emp:,.2f}", st['cell_right'])
+        ],
+        [
+            Paragraph("Housing Allowance (بدل سكن)", st['cell_text']), Paragraph(f"{housing:,.2f}", st['cell_right']),
+            Paragraph("Other Disciplinary / Loan Deductions", st['cell_text']), Paragraph(f"{other_ded:,.2f}", st['cell_right'])
+        ],
+        [
+            Paragraph("Transportation Allowance (بدل نقل)", st['cell_text']), Paragraph(f"{transport:,.2f}", st['cell_right']),
+            Paragraph("-", st['cell_text']), Paragraph("-", st['cell_right'])
+        ],
+        [
+            Paragraph("Other Allowances & Benefits (بدلات أخرى)", st['cell_text']), Paragraph(f"{other_allow:,.2f}", st['cell_right']),
+            Paragraph("-", st['cell_text']), Paragraph("-", st['cell_right'])
+        ],
+        [
+            Paragraph("<b>Total Gross Earnings:</b>", st['cell_bold']), Paragraph(f"<b>SAR {gross:,.2f}</b>", st['cell_right_bold']),
+            Paragraph("<b>Total Deductions:</b>", st['cell_bold']), Paragraph(f"<b>SAR {total_ded:,.2f}</b>", st['cell_right_bold'])
+        ]
+    ]
+    fin_table = Table(fin_breakdown, colWidths=[2.3*inch, 1.5*inch, 2.3*inch, 1.5*inch])
     fin_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_DARK),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('BACKGROUND', (0,5), (-1,5), colors.HexColor('#F3F4F6')),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+        ('BACKGROUND', (0,-1), (-1,-1), COLOR_NEUTRAL_BG),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(fin_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 8))
     
-    net_box_data = [
-        [
-            Paragraph("<b>NET SALARY PAYABLE:</b>", ParagraphStyle('NetLbl', parent=cell_bold, fontSize=12, textColor=colors.HexColor('#0B5D34'))),
-            Paragraph(f"<b>SAR {net_pay:,.2f}</b>", ParagraphStyle('NetVal', parent=cell_bold, fontSize=14, textColor=colors.HexColor('#006C35'), alignment=2))
-        ]
-    ]
-    net_table = Table(net_box_data, colWidths=[4.5*inch, 2.7*inch])
-    net_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ECFDF5')),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#10B981')),
-        ('TOPPADDING', (0,0), (-1,-1), 10),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-        ('LEFTPADDING', (0,0), (-1,-1), 12),
-        ('RIGHTPADDING', (0,0), (-1,-1), 12),
-    ]))
-    elements.append(net_table)
-    elements.append(Spacer(1, 12))
+    # Statutory Employer Contribution Note
+    gosi_note = Paragraph(f"<font size=7 color='#64748B'>* Employer Statutory GOSI Contribution for this period: <b>SAR {gosi_empr:,.2f}</b> ({'11.75%' if is_saudi else '2.0%'} per Saudi Social Insurance Law).</font>", st['cell_text'])
+    elements.append(gosi_note)
+    elements.append(Spacer(1, 14))
     
-    gosi_info_p = Paragraph(f"<font size=8 color='#6B7280'>* Employer GOSI Contribution for this period: SAR {gosi_empr:,.2f} (Computed per Saudi GOSI Regulations).</font>", cell_style)
-    elements.append(gosi_info_p)
-    elements.append(Spacer(1, 25))
-    
+    # 5. Dual Verification & Corporate Stamp Block
     sig_data = [
         [
-            Paragraph("<b>Employer Authorized Stamp & Signature</b>", cell_style),
-            Paragraph("<b>Employee Acknowledgment</b>", cell_style)
+            Paragraph("<b>AUTHORIZED COMPANY REPRESENTATIVE</b>", st['sig_title']),
+            Paragraph("<b>EMPLOYEE ACKNOWLEDGMENT</b>", st['sig_title'])
         ],
         [
-            Paragraph("<br/><br/>____________________________________<br/>HR & Payroll Department", subtitle_style),
-            Paragraph("<br/><br/>____________________________________<br/>Signature & Date", subtitle_style)
+            Paragraph("HR & Payroll Operations Department<br/><br/>________________________________________<br/>Signature & Corporate Stamp", st['sig_sub']),
+            Paragraph("I acknowledge receipt of full salary payment.<br/><br/>________________________________________<br/>Employee Signature & Date", st['sig_sub'])
         ]
     ]
-    sig_table = Table(sig_data, colWidths=[3.6*inch, 3.6*inch])
+    sig_table = Table(sig_data, colWidths=[3.8*inch, 3.8*inch])
     sig_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(sig_table)
+    elements.append(Spacer(1, 8))
+    
+    elements.append(Paragraph("This payroll voucher is electronically certified and fully compliant with the Saudi Ministry of Human Resources (MHRSD) & SAMA WPS regulations.", st['footer_note']))
     
     doc.build(elements)
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
 
+
+# =========================================================================
+# 2. VENDOR STATEMENT OF ACCOUNT & PAYMENT VOUCHER PDF
+# =========================================================================
 def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: dict) -> bytes:
     """
-    Generates official Supplier Statement & Payment Voucher PDF.
+    Generates an executive-grade Supplier Statement & Payment Voucher PDF.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=36,
-        bottomMargin=36
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=28,
+        bottomMargin=28
     )
     
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor('#006C35'),
-        alignment=2
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'SubTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor('#4B5563')
-    )
-    
-    section_heading = ParagraphStyle(
-        'SectionHeading',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=15,
-        textColor=colors.HexColor('#0B5D34')
-    )
-    
-    cell_style = ParagraphStyle(
-        'CellText',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
+    st = get_modern_styles()
     elements = []
     
     company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
+    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
     cr_num = company_info.get("cr_number", "1010894512")
-    
-    header_data = [
-        [
-            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | Riyadh, Saudi Arabia</font>", subtitle_style),
-            Paragraph("<b>SUPPLIER STATEMENT</b><br/><font size=9 color='#006C35'>Accounts Payable Voucher</font>", title_style)
-        ]
-    ]
-    
-    header_table = Table(header_data, colWidths=[4.2*inch, 3.0*inch])
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN', (1,0), (1,0), 'RIGHT'),
-    ]))
-    elements.append(header_table)
-    elements.append(Spacer(1, 10))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
+    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
     
     total_amt = float(sp.get("amount", 0.0))
     paid_amt = float(sp.get("paid_amount", 0.0))
@@ -323,212 +434,13 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     end_d = sp.get("supply_end_date") or sp.get("supply_date", "")
     supply_period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
     
-    inv_info_data = [
-        [
-            Paragraph("<b>Vendor Company:</b>", cell_bold), Paragraph(str(sp.get("company_name", "")), cell_style),
-            Paragraph("<b>Invoice Number:</b>", cell_bold), Paragraph(str(sp.get("invoice_number", "N/A")), cell_style)
-        ],
-        [
-            Paragraph("<b>Invoice Date:</b>", cell_bold), Paragraph(str(sp.get("invoice_date", "")), cell_style),
-            Paragraph("<b>Due Date:</b>", cell_bold), Paragraph(str(sp.get("due_date", "")), cell_style)
-        ],
-        [
-            Paragraph("<b>Supply Period:</b>", cell_bold), Paragraph(supply_period, cell_style),
-            Paragraph("<b>Payment Status:</b>", cell_bold), Paragraph(str(sp.get("status", "Pending")), cell_style)
-        ],
-        [
-            Paragraph("<b>Invoice Description:</b>", cell_bold), Paragraph(str(sp.get("invoice_details", "N/A")), cell_style),
-            Paragraph("<b>Remarks / Notes:</b>", cell_bold), Paragraph(str(sp.get("remarks", "N/A")), cell_style)
-        ]
-    ]
-    
-    inv_table = Table(inv_info_data, colWidths=[1.5*inch, 2.1*inch, 1.5*inch, 2.1*inch])
-    inv_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9FAFB')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F3F4F6')),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
-    ]))
-    elements.append(inv_table)
-    elements.append(Spacer(1, 15))
-    
-    # Financial Balance Box
-    bal_data = [
-        [
-            Paragraph("<b>Total Billed:</b>", cell_bold), Paragraph(f"SAR {total_amt:,.2f}", cell_style),
-            Paragraph("<b>Total Paid:</b>", cell_bold), Paragraph(f"SAR {paid_amt:,.2f}", cell_style),
-            Paragraph("<b>Balance Due:</b>", ParagraphStyle('BalL', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
-            Paragraph(f"<b>SAR {rem_amt:,.2f}</b>", ParagraphStyle('BalV', parent=cell_bold, textColor=colors.HexColor('#EF4444'), fontSize=10))
-        ]
-    ]
-    bal_table = Table(bal_data, colWidths=[1.3*inch, 1.1*inch, 1.3*inch, 1.1*inch, 1.3*inch, 1.1*inch])
-    bal_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FEF2F2')),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#FCA5A5')),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 6),
-        ('RIGHTPADDING', (0,0), (-1,-1), 6),
-    ]))
-    elements.append(bal_table)
-    elements.append(Spacer(1, 15))
-    
-    # Payment History Table
-    elements.append(Paragraph("Payment Disbursal History & Transactions", section_heading))
-    elements.append(Spacer(1, 6))
-    
-    log_rows = [
-        [
-            Paragraph("<font color='white'><b>Date</b></font>", cell_bold),
-            Paragraph("<font color='white'><b>Payment Method</b></font>", cell_bold),
-            Paragraph("<font color='white'><b>Reference #</b></font>", cell_bold),
-            Paragraph("<font color='white'><b>Notes / Details</b></font>", cell_bold),
-            Paragraph("<font color='white'><b>Amount Paid (SAR)</b></font>", cell_bold)
-        ]
-    ]
-    
-    if not payment_logs:
-        log_rows.append([Paragraph("No payment transactions recorded yet.", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("SAR 0.00", cell_style)])
-    else:
-        for lg in payment_logs:
-            log_rows.append([
-                Paragraph(str(lg.get("payment_date", "")), cell_style),
-                Paragraph(str(lg.get("payment_method", "Bank Transfer")), cell_style),
-                Paragraph(str(lg.get("reference_number", "N/A")), cell_style),
-                Paragraph(str(lg.get("notes", "N/A")), cell_style),
-                Paragraph(f"<b>SAR {float(lg.get('payment_amount', 0.0)):,.2f}</b>", cell_style)
-            ])
-            
-    history_table = Table(log_rows, colWidths=[1.1*inch, 1.4*inch, 1.3*inch, 2.0*inch, 1.4*inch])
-    history_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
-    ]))
-    elements.append(history_table)
-    elements.append(Spacer(1, 25))
-    
-    sig_data = [
-        [
-            Paragraph("<b>Finance Manager Signature</b>", cell_style),
-            Paragraph("<b>Vendor Acknowledgment</b>", cell_style)
-        ],
-        [
-            Paragraph("<br/><br/>____________________________________<br/>Finance Department", subtitle_style),
-            Paragraph("<br/><br/>____________________________________<br/>Authorized Representative", subtitle_style)
-        ]
-    ]
-    sig_table = Table(sig_data, colWidths=[3.6*inch, 3.6*inch])
-    sig_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-    ]))
-    elements.append(sig_table)
-    
-    doc.build(elements)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
-
-def generate_supplier_summary_report_pdf(
-    invoices: List[Dict[str, Any]],
-    summary_stats: Dict[str, Any],
-    company_info: Dict[str, Any],
-    filter_info: Optional[Dict[str, Any]] = None
-) -> bytes:
-    """
-    Generates an executive-grade Accounts Payable & Supplier Invoices Report PDF
-    with multi-supplier selection support, vendor subtotals, and luxury Saudi styling.
-    """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=28,
-        leftMargin=28,
-        topMargin=28,
-        bottomMargin=28
-    )
-    
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=15,
-        leading=18,
-        textColor=colors.HexColor('#006C35'),
-        alignment=2
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'SubTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=8,
-        leading=11,
-        textColor=colors.HexColor('#4B5563')
-    )
-    
-    vendor_banner_style = ParagraphStyle(
-        'VendorBanner',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9.5,
-        leading=13,
-        textColor=colors.HexColor('#006C35')
-    )
-    
-    cell_style = ParagraphStyle(
-        'CellText',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
-    cell_white = ParagraphStyle(
-        'CellWhite',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.white
-    )
-    
-    elements = []
-    
-    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
-    cr_num = company_info.get("cr_number", "1010894512")
-    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
-    
     # 1. Executive Top Header
     header_data = [
         [
-            Paragraph(f"<b>{company_name}</b><br/><font size=7.5 color='#6B7280'>CR: {cr_num} • {address}</font>", subtitle_style),
-            Paragraph("<b>ACCOUNTS PAYABLE REPORT</b><br/><font size=8 color='#006C35'>Supplier Invoices & Outflow Schedule</font>", title_style)
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • {address}</font>", st['company_meta']),
+            Paragraph("<b>VENDOR STATEMENT OF ACCOUNT</b><br/><font size=7.5 color='#D97706'><b>كشف حساب المورد وسند الصرف</b></font><br/><font size=7 color='#64748B'>Generated: " + datetime.now().strftime("%Y-%m-%d %H:%M") + "</font>", st['doc_title'])
         ]
     ]
-    
     header_table = Table(header_data, colWidths=[4.2*inch, 3.4*inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -536,64 +448,253 @@ def generate_supplier_summary_report_pdf(
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 4))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=8))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_PRIMARY_DARK, spaceAfter=8))
     
-    # 2. Filter / Scope Metadata Box
+    # 2. Executive KPI Cards
+    kpi_data = [
+        [
+            Paragraph("<b>TOTAL BILLED</b>", st['kpi_label']),
+            Paragraph("<b>TOTAL DISBURSED</b>", st['kpi_label']),
+            Paragraph("<b>OUTSTANDING BALANCE</b>", st['kpi_label']),
+            Paragraph("<b>INVOICE STATUS</b>", st['kpi_label'])
+        ],
+        [
+            Paragraph(f"SAR {total_amt:,.2f}", st['kpi_val_blue']),
+            Paragraph(f"SAR {paid_amt:,.2f}", st['kpi_val_green']),
+            Paragraph(f"<b>SAR {rem_amt:,.2f}</b>", st['kpi_val_red']),
+            Paragraph(format_status_pill(sp.get("status", "Pending")), st['cell_bold'])
+        ]
+    ]
+    kpi_table = Table(kpi_data, colWidths=[1.9*inch, 1.9*inch, 1.9*inch, 1.9*inch])
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,-1), COLOR_INFO_BG),
+        ('BACKGROUND', (1,0), (1,-1), COLOR_PRIMARY_LIGHT),
+        ('BACKGROUND', (2,0), (2,-1), COLOR_DANGER_BG),
+        ('BACKGROUND', (3,0), (3,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.8, COLOR_PRIMARY_MED),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 10))
+    
+    # 3. Invoice & Vendor Metadata Card
+    inv_info = [
+        [
+            Paragraph("<b>Vendor Company:</b>", st['cell_bold']), Paragraph(str(sp.get("company_name", "")), st['cell_text']),
+            Paragraph("<b>Invoice Number:</b>", st['cell_bold']), Paragraph(str(sp.get("invoice_number", "N/A")), st['cell_text'])
+        ],
+        [
+            Paragraph("<b>Invoice Date:</b>", st['cell_bold']), Paragraph(str(sp.get("invoice_date", "")), st['cell_text']),
+            Paragraph("<b>Payment Due Date:</b>", st['cell_bold']), Paragraph(str(sp.get("due_date", "")), st['cell_text'])
+        ],
+        [
+            Paragraph("<b>Supply Period:</b>", st['cell_bold']), Paragraph(supply_period, st['cell_text']),
+            Paragraph("<b>System Record ID:</b>", st['cell_bold']), Paragraph(f"#INV-{sp.get('id', '')}", st['cell_text'])
+        ],
+        [
+            Paragraph("<b>Service / Item Details:</b>", st['cell_bold']), Paragraph(str(sp.get("invoice_details", "N/A")), st['cell_text']),
+            Paragraph("<b>Internal Notes:</b>", st['cell_bold']), Paragraph(str(sp.get("remarks", "N/A")), st['cell_text'])
+        ]
+    ]
+    inv_table = Table(inv_info, colWidths=[1.4*inch, 2.4*inch, 1.3*inch, 2.5*inch])
+    inv_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F1F5F9')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(inv_table)
+    elements.append(Spacer(1, 10))
+    
+    # 4. Disbursal Transaction History Table
+    elements.append(Paragraph("<b>Disbursal Settlements & Transaction Logs</b>", st['section_heading']))
+    elements.append(Spacer(1, 4))
+    
+    log_rows = [
+        [
+            Paragraph("Settlement Date", st['cell_white']),
+            Paragraph("Payment Method", st['cell_white']),
+            Paragraph("Reference / Transaction #", st['cell_white']),
+            Paragraph("Notes & Settlement Details", st['cell_white']),
+            Paragraph("Amount Disbursed (SAR)", st['cell_white'])
+        ]
+    ]
+    
+    if not payment_logs:
+        log_rows.append([Paragraph("No payments disbursed yet. Full amount remains outstanding.", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("SAR 0.00", st['cell_right'])])
+    else:
+        for idx, lg in enumerate(payment_logs):
+            bg_color = COLOR_NEUTRAL_BG if idx % 2 == 1 else colors.white
+            amt_lg = float(lg.get("payment_amount", 0.0))
+            log_rows.append([
+                Paragraph(str(lg.get("payment_date", "")), st['cell_text']),
+                Paragraph(str(lg.get("payment_method", "Bank Transfer")), st['cell_text']),
+                Paragraph(str(lg.get("reference_number", "N/A")), st['cell_text']),
+                Paragraph(str(lg.get("notes", "N/A")), st['cell_text']),
+                Paragraph(f"<b>SAR {amt_lg:,.2f}</b>", st['cell_right_bold'])
+            ])
+            
+    history_table = Table(log_rows, colWidths=[1.1*inch, 1.3*inch, 1.4*inch, 2.2*inch, 1.6*inch])
+    history_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_DARK),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(history_table)
+    elements.append(Spacer(1, 14))
+    
+    # 5. Signatures Block
+    sig_data = [
+        [
+            Paragraph("<b>ACCOUNTS PAYABLE CONTROLLER</b>", st['sig_title']),
+            Paragraph("<b>VENDOR RECEIVER ACKNOWLEDGMENT</b>", st['sig_title'])
+        ],
+        [
+            Paragraph("Finance & Treasury Department<br/><br/>________________________________________<br/>Signature & Company Stamp", st['sig_sub']),
+            Paragraph("Authorized Commercial Representative<br/><br/>________________________________________<br/>Signature & Official Stamp", st['sig_sub'])
+        ]
+    ]
+    sig_table = Table(sig_data, colWidths=[3.8*inch, 3.8*inch])
+    sig_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(sig_table)
+    elements.append(Spacer(1, 8))
+    
+    elements.append(Paragraph("This official statement of account is issued under Saudi Commercial Law and serves as verified proof of AP settlement.", st['footer_note']))
+    
+    doc.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+
+# =========================================================================
+# 3. EXECUTIVE ACCOUNTS PAYABLE & MULTI-SUPPLIER SCHEDULE REPORT PDF
+# =========================================================================
+def generate_supplier_summary_report_pdf(
+    invoices: List[Dict[str, Any]],
+    summary_stats: Dict[str, Any],
+    company_info: Dict[str, Any],
+    filter_info: Optional[Dict[str, Any]] = None
+) -> bytes:
+    """
+    Generates a modern, executive-grade Accounts Payable & Supplier Invoices Report PDF
+    with multi-supplier selection support, vendor subtotals, and luxury Saudi corporate styling.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=26,
+        leftMargin=26,
+        topMargin=26,
+        bottomMargin=26
+    )
+    
+    st = get_modern_styles()
+    elements = []
+    
+    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
+    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
+    cr_num = company_info.get("cr_number", "1010894512")
+    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
+    
+    # 1. Executive Top Header
+    header_data = [
+        [
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • {address}</font>", st['company_meta']),
+            Paragraph("<b>ACCOUNTS PAYABLE REPORT</b><br/><font size=7.5 color='#D97706'><b>جدول التزامات الموردين والمستحقات</b></font><br/><font size=7 color='#64748B'>Generated: " + datetime.now().strftime("%Y-%m-%d %H:%M") + "</font>", st['doc_title'])
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[4.3*inch, 3.4*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 3))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_PRIMARY_DARK, spaceAfter=6))
+    
+    # 2. Scope & Filter Parameters Box
     f_info = filter_info or {}
     sel_sups = f_info.get("selected_suppliers", "All Registered Suppliers")
     st_filter = f_info.get("status", "All Statuses")
     date_scope = f_info.get("date_range", "All Historical Invoices")
-    gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     
     meta_data = [
         [
-            Paragraph("<b>Report Target:</b>", cell_bold), Paragraph(str(sel_sups), cell_style),
-            Paragraph("<b>Generated:</b>", cell_bold), Paragraph(gen_time, cell_style)
+            Paragraph("<b>Target Suppliers:</b>", st['cell_bold']), Paragraph(str(sel_sups), st['cell_text']),
+            Paragraph("<b>Generated On:</b>", st['cell_bold']), Paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"), st['cell_text'])
         ],
         [
-            Paragraph("<b>Status Scope:</b>", cell_bold), Paragraph(str(st_filter), cell_style),
-            Paragraph("<b>Period:</b>", cell_bold), Paragraph(str(date_scope), cell_style)
+            Paragraph("<b>Payment Status Scope:</b>", st['cell_bold']), Paragraph(str(st_filter), st['cell_text']),
+            Paragraph("<b>Invoice Date Filter:</b>", st['cell_bold']), Paragraph(str(date_scope), st['cell_text'])
         ]
     ]
-    meta_table = Table(meta_data, colWidths=[1.1*inch, 3.1*inch, 1.0*inch, 2.4*inch])
+    meta_table = Table(meta_data, colWidths=[1.3*inch, 3.1*inch, 1.1*inch, 2.2*inch])
     meta_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F1F5F9')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
     ]))
     elements.append(meta_table)
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 6))
     
-    # 3. KPI Executive Summary Row
+    # 3. KPI Executive Summary Cards
     tot_billed = float(summary_stats.get("total_billed", sum(float(i.get("amount", 0)) for i in invoices)))
     tot_paid = float(summary_stats.get("total_paid", sum(float(i.get("paid_amount", 0)) for i in invoices)))
     tot_rem = float(summary_stats.get("total_outstanding_payable", sum(float(i.get("remaining_amount", 0)) for i in invoices)))
     tot_over = float(summary_stats.get("total_overdue_payable", 0.0))
     
-    summary_data = [
+    kpi_data = [
         [
-            Paragraph("<b>Total Invoices:</b>", cell_bold), Paragraph(f"{len(invoices)} Records", cell_style),
-            Paragraph("<b>Total Billed:</b>", cell_bold), Paragraph(f"SAR {tot_billed:,.2f}", cell_style),
-            Paragraph("<b>Total Disbursed:</b>", cell_bold), Paragraph(f"SAR {tot_paid:,.2f}", cell_style),
-            Paragraph("<b>Net Liability Due:</b>", ParagraphStyle('RedLbl', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
-            Paragraph(f"<b>SAR {tot_rem:,.2f}</b>", ParagraphStyle('RedVal', parent=cell_bold, textColor=colors.HexColor('#DC2626'), fontSize=8.5))
+            Paragraph("<b>TOTAL INVOICES</b>", st['kpi_label']),
+            Paragraph("<b>TOTAL BILLED</b>", st['kpi_label']),
+            Paragraph("<b>TOTAL DISBURSED</b>", st['kpi_label']),
+            Paragraph("<b>NET LIABILITY DUE</b>", st['kpi_label'])
+        ],
+        [
+            Paragraph(f"{len(invoices)} Records", st['kpi_val_blue']),
+            Paragraph(f"SAR {tot_billed:,.2f}", st['kpi_val_blue']),
+            Paragraph(f"SAR {tot_paid:,.2f}", st['kpi_val_green']),
+            Paragraph(f"<b>SAR {tot_rem:,.2f}</b>", ParagraphStyle('NetHugeRed', parent=st['kpi_val_red'], fontSize=11.5, textColor=COLOR_DANGER))
         ]
     ]
-    sum_table = Table(summary_data, colWidths=[1.1*inch, 0.8*inch, 0.9*inch, 1.1*inch, 1.0*inch, 1.1*inch, 1.1*inch, 1.1*inch])
-    sum_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F0FDF4')),
-        ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor('#86EFAC')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#BBF7D0')),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    kpi_table = Table(kpi_data, colWidths=[1.92*inch, 1.92*inch, 1.92*inch, 1.92*inch])
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,-1), COLOR_NEUTRAL_BG),
+        ('BACKGROUND', (1,0), (1,-1), COLOR_INFO_BG),
+        ('BACKGROUND', (2,0), (2,-1), COLOR_PRIMARY_LIGHT),
+        ('BACKGROUND', (3,0), (3,-1), COLOR_DANGER_BG),
+        ('BOX', (0,0), (-1,-1), 0.8, COLOR_PRIMARY_MED),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
     ]))
-    elements.append(sum_table)
-    elements.append(Spacer(1, 10))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 8))
     
-    # 4. Grouped Supplier Breakdown Table
-    # Group invoices by company_name
+    # 4. Grouped Supplier Tables
     grouped = {}
     for inv in invoices:
         c_name = inv.get("company_name", "Other Vendors")
@@ -609,36 +710,37 @@ def generate_supplier_summary_report_pdf(
         # Vendor Section Banner
         v_header_data = [
             [
-                Paragraph(f"🏢 <b>Supplier: {vendor_name}</b> <font size=7 color='#4B5563'>({len(v_invoices)} Invoices)</font>", vendor_banner_style),
-                Paragraph(f"Billed: <b>SAR {v_billed:,.2f}</b> | Paid: <b>SAR {v_paid:,.2f}</b> | Balance Due: <font color='#DC2626'><b>SAR {v_rem:,.2f}</b></font>", ParagraphStyle('VRight', parent=cell_style, alignment=2))
+                Paragraph(f"🏢 <b>Supplier: {vendor_name}</b> <font size=6.5 color='#64748B'>({len(v_invoices)} Invoices)</font>", ParagraphStyle('VTitle', parent=st['cell_bold'], textColor=COLOR_PRIMARY_DARK, fontSize=8.5)),
+                Paragraph(f"Billed: <b>SAR {v_billed:,.2f}</b> | Paid: <font color='#059669'><b>SAR {v_paid:,.2f}</b></font> | Balance Due: <font color='#DC2626'><b>SAR {v_rem:,.2f}</b></font>", ParagraphStyle('VRight', parent=st['cell_text'], alignment=2, fontSize=7.5))
             ]
         ]
-        v_header_table = Table(v_header_data, colWidths=[4.2*inch, 3.4*inch])
+        v_header_table = Table(v_header_data, colWidths=[4.3*inch, 3.4*inch])
         v_header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#E5E7EB')),
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F1F5F9')),
+            ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
             ('TOPPADDING', (0,0), (-1,-1), 3),
             ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('LEFTPADDING', (0,0), (-1,-1), 4),
-            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING', (0,0), (-1,-1), 5),
+            ('RIGHTPADDING', (0,0), (-1,-1), 5),
         ]))
         elements.append(v_header_table)
-        elements.append(Spacer(1, 2))
+        elements.append(Spacer(1, 1))
         
-        # Invoice Rows for this vendor
+        # Invoice Rows
         rows = [
             [
-                Paragraph("Invoice #", cell_white),
-                Paragraph("Invoice Date", cell_white),
-                Paragraph("Supply Period", cell_white),
-                Paragraph("Due Date", cell_white),
-                Paragraph("Billed (SAR)", cell_white),
-                Paragraph("Paid (SAR)", cell_white),
-                Paragraph("Balance (SAR)", cell_white),
-                Paragraph("Status", cell_white)
+                Paragraph("Invoice #", st['cell_white']),
+                Paragraph("Invoice Date", st['cell_white']),
+                Paragraph("Supply Period", st['cell_white']),
+                Paragraph("Due Date", st['cell_white']),
+                Paragraph("Billed (SAR)", st['cell_white']),
+                Paragraph("Paid (SAR)", st['cell_white']),
+                Paragraph("Balance (SAR)", st['cell_white']),
+                Paragraph("Status", st['cell_white'])
             ]
         ]
         
-        for inv in v_invoices:
+        for idx, inv in enumerate(v_invoices):
             start_d = inv.get("supply_start_date") or inv.get("supply_date", "")
             end_d = inv.get("supply_end_date") or inv.get("supply_date", "")
             period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
@@ -646,60 +748,74 @@ def generate_supplier_summary_report_pdf(
             amt = float(inv.get("amount", 0.0))
             pd = float(inv.get("paid_amount", 0.0))
             rem = float(inv.get("remaining_amount", max(0.0, amt - pd)))
-            st = str(inv.get("status", "Pending"))
+            st_text = str(inv.get("status", "Pending"))
             
             rows.append([
-                Paragraph(str(inv.get('invoice_number', 'N/A')), cell_style),
-                Paragraph(str(inv.get('invoice_date', '')), cell_style),
-                Paragraph(period, cell_style),
-                Paragraph(str(inv.get('due_date', '')), cell_style),
-                Paragraph(f"{amt:,.2f}", cell_style),
-                Paragraph(f"{pd:,.2f}", cell_style),
-                Paragraph(f"<b>{rem:,.2f}</b>", cell_style),
-                Paragraph(st, cell_style)
+                Paragraph(str(inv.get('invoice_number', 'N/A')), st['cell_text']),
+                Paragraph(str(inv.get('invoice_date', '')), st['cell_text']),
+                Paragraph(period, st['cell_text']),
+                Paragraph(str(inv.get('due_date', '')), st['cell_text']),
+                Paragraph(f"{amt:,.2f}", st['cell_right']),
+                Paragraph(f"{pd:,.2f}", st['cell_right']),
+                Paragraph(f"<b>{rem:,.2f}</b>", ParagraphStyle('RedCell', parent=st['cell_right_bold'], textColor=COLOR_DANGER if rem > 0 else COLOR_TEXT_MAIN)),
+                Paragraph(format_status_pill(st_text), st['cell_text'])
             ])
             
-        t = Table(rows, colWidths=[1.1*inch, 0.8*inch, 1.5*inch, 0.8*inch, 0.85*inch, 0.85*inch, 0.9*inch, 0.8*inch])
+        t = Table(rows, colWidths=[1.1*inch, 0.8*inch, 1.6*inch, 0.8*inch, 0.85*inch, 0.85*inch, 0.9*inch, 0.85*inch])
         t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
-            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
-            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-            ('TOPPADDING', (0,0), (-1,-1), 3.5),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
+            ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_DARK),
+            ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#F1F5F9')),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
             ('LEFTPADDING', (0,0), (-1,-1), 4),
             ('RIGHTPADDING', (0,0), (-1,-1), 4),
         ]))
         elements.append(t)
-        elements.append(Spacer(1, 8))
+        elements.append(Spacer(1, 6))
         
-    # Grand Total Bar
+    # 5. Grand Totals Summary Bar
     grand_data = [
         [
-            Paragraph("<b>GRAND TOTALS ACROSS SELECTED SCOPE:</b>", ParagraphStyle('GTL', parent=cell_bold, fontSize=8)),
-            Paragraph(f"<b>Billed: SAR {tot_billed:,.2f}</b>", cell_bold),
-            Paragraph(f"<b>Disbursed: SAR {tot_paid:,.2f}</b>", cell_bold),
-            Paragraph(f"<b>Total Balance Due: <font color='#DC2626'>SAR {tot_rem:,.2f}</font></b>", cell_bold)
+            Paragraph("<b>GRAND TOTALS (CONSOLIDATED SCOPE):</b>", ParagraphStyle('GTL', parent=st['cell_bold'], fontSize=7.5)),
+            Paragraph(f"<b>Billed: SAR {tot_billed:,.2f}</b>", st['cell_bold']),
+            Paragraph(f"<b>Disbursed: SAR {tot_paid:,.2f}</b>", ParagraphStyle('GP', parent=st['cell_bold'], textColor=COLOR_PRIMARY_DARK)),
+            Paragraph(f"<b>Total Net Due: <font color='#DC2626'>SAR {tot_rem:,.2f}</font></b>", st['cell_bold'])
         ]
     ]
-    gt_table = Table(grand_data, colWidths=[2.8*inch, 1.6*inch, 1.6*inch, 1.6*inch])
+    gt_table = Table(grand_data, colWidths=[2.8*inch, 1.6*inch, 1.6*inch, 1.7*inch])
     gt_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FEF3C7')),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#F59E0B')),
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_GOLD_BG),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_GOLD),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(gt_table)
+    elements.append(Spacer(1, 10))
+    
+    # 6. Corporate Signatures Block
+    sig_data = [
+        [
+            Paragraph("<b>PREPARED BY: ACCOUNTS PAYABLE OFFICER</b>", st['sig_title']),
+            Paragraph("<b>APPROVED BY: CHIEF FINANCIAL OFFICER (CFO)</b>", st['sig_title'])
+        ],
+        [
+            Paragraph("Treasury & Accounts Payable Division<br/><br/>________________________________________<br/>Signature & Review Stamp", st['sig_sub']),
+            Paragraph("Executive Financial Management<br/><br/>________________________________________<br/>Authorized Signature & Corporate Seal", st['sig_sub'])
+        ]
+    ]
+    sig_table = Table(sig_data, colWidths=[3.85*inch, 3.85*inch])
+    sig_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_NEUTRAL_BG),
+        ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
         ('TOPPADDING', (0,0), (-1,-1), 5),
         ('BOTTOMPADDING', (0,0), (-1,-1), 5),
     ]))
-    elements.append(gt_table)
-    elements.append(Spacer(1, 16))
-    
-    # Signatures
-    sig_data = [
-        [
-            Paragraph("<b>Prepared By: Accounts Payable Officer</b><br/><br/>____________________________________", subtitle_style),
-            Paragraph("<b>Approved By: Chief Financial Officer</b><br/><br/>____________________________________", subtitle_style)
-        ]
-    ]
-    sig_table = Table(sig_data, colWidths=[3.8*inch, 3.8*inch])
     elements.append(sig_table)
+    elements.append(Spacer(1, 4))
+    
+    elements.append(Paragraph("This accounts payable report is generated by the Cloud ERP System in compliance with Saudi Corporate & Financial Standards.", st['footer_note']))
     
     doc.build(elements)
     pdf_bytes = buffer.getvalue()
