@@ -863,8 +863,6 @@ async function deleteDocument(docId) {
 }
 
 // 5. MONTHLY WORKER PAYROLL TRACKING & WPS ENGINE
-const MONTH_NAMES_MAP = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
 async function loadMonthlyPayrollRoster() {
   if (currentUserRole === 'viewer') return;
   const monthSelect = document.getElementById('roster-select-month');
