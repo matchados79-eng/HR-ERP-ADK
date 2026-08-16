@@ -611,8 +611,29 @@ def get_vendor_ledger(company_name: str, user: dict = Depends(get_current_user))
 
 @app.post("/api/suppliers/payments")
 def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
-    paid_amt = req.amount if req.status == "Paid" else 0.0
-    rem_amt = max(0.0, req.amount - paid_amt)
+    if not req.company_name or not req.company_name.strip():
+        raise HTTPException(status_code=400, detail="Vendor / Company name is required.")
+        
+    inv_amount = float(req.amount or 0.0)
+    if inv_amount < 0:
+        raise HTTPException(status_code=400, detail="Invoice amount cannot be negative.")
+        
+    inv_date = req.invoice_date.strip() if req.invoice_date and req.invoice_date.strip() else date.today().strftime("%Y-%m-%d")
+    sup_date = req.supply_date.strip() if req.supply_date and req.supply_date.strip() else inv_date
+    
+    if req.due_date and req.due_date.strip():
+        due_date = req.due_date.strip()
+    else:
+        try:
+            due_date = (datetime.strptime(inv_date, "%Y-%m-%d").date() + timedelta(days=30)).strftime("%Y-%m-%d")
+        except Exception:
+            due_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+            
+    inv_details = req.invoice_details.strip() if req.invoice_details and req.invoice_details.strip() else "General Supplies & Services"
+    inv_status = req.status or "Pending"
+    
+    paid_amt = inv_amount if inv_status == "Paid" else 0.0
+    rem_amt = max(0.0, inv_amount - paid_amt)
     
     sp_id = db.execute_cmd("""
         INSERT INTO supplier_payments (
@@ -620,8 +641,8 @@ def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(req
             supply_date, amount, paid_amount, remaining_amount, status, remarks, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        req.company_name, req.invoice_number, req.invoice_date, req.due_date, req.invoice_details,
-        req.supply_date, req.amount, paid_amt, rem_amt, req.status, req.remarks, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        req.company_name.strip(), req.invoice_number or None, inv_date, due_date, inv_details,
+        sup_date, inv_amount, paid_amt, rem_amt, inv_status, req.remarks or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
     
     if paid_amt > 0:
@@ -629,7 +650,7 @@ def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(req
             INSERT INTO supplier_payment_logs (
                 supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (sp_id, paid_amt, date.today().strftime("%Y-%m-%d"), "Bank Transfer", "Initial Settlement", "Full initial payment", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        """, (sp_id, paid_amt, inv_date, "Bank Transfer", "Initial Settlement", "Full upfront payment", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         
     return {"message": "Supplier payment record created successfully", "id": sp_id}
 
@@ -639,9 +660,14 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
     if not sp:
         raise HTTPException(status_code=404, detail="Supplier payment record not found.")
         
+    inv_amount = float(req.amount or 0.0)
+    inv_date = req.invoice_date.strip() if req.invoice_date and req.invoice_date.strip() else sp["invoice_date"]
+    sup_date = req.supply_date.strip() if req.supply_date and req.supply_date.strip() else sp["supply_date"]
+    due_date = req.due_date.strip() if req.due_date and req.due_date.strip() else sp["due_date"]
+    inv_details = req.invoice_details.strip() if req.invoice_details and req.invoice_details.strip() else sp["invoice_details"]
+    
     current_paid = float(sp["paid_amount"])
-    new_amount = float(req.amount)
-    new_remaining = max(0.0, new_amount - current_paid)
+    new_remaining = max(0.0, inv_amount - current_paid)
     
     if new_remaining <= 0:
         new_status = "Paid"
@@ -649,7 +675,7 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
     elif current_paid > 0:
         new_status = "Partially Paid"
     else:
-        new_status = req.status
+        new_status = req.status or "Pending"
         
     db.execute_cmd("""
         UPDATE supplier_payments SET
@@ -665,9 +691,9 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
             remarks = ?
         WHERE id = ?
     """, (
-        req.company_name, req.invoice_number, req.invoice_date, req.due_date,
-        req.invoice_details, req.supply_date, new_amount, new_remaining,
-        new_status, req.remarks, sp_id
+        req.company_name.strip(), req.invoice_number or None, inv_date,
+        due_date, inv_details, sup_date, inv_amount, new_remaining,
+        new_status, req.remarks or None, sp_id
     ))
     
     return {"message": "Supplier payment record updated successfully"}

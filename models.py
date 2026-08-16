@@ -85,11 +85,11 @@ class LeaveStatusUpdate(BaseModel):
 class SupplierPaymentCreate(BaseModel):
     company_name: str
     invoice_number: Optional[str] = None
-    invoice_date: str
-    due_date: str
-    invoice_details: str
-    supply_date: str
-    amount: float
+    invoice_date: Optional[str] = None
+    due_date: Optional[str] = None
+    invoice_details: Optional[str] = None
+    supply_date: Optional[str] = None
+    amount: float = 0.0
     remarks: Optional[str] = None
     status: Optional[str] = "Pending"
 

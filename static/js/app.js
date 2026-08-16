@@ -1213,7 +1213,22 @@ async function loadSupplierPayments() {
 }
 
 function openRecordSupplierPaymentModal() {
-  document.getElementById('record-supplier-form').reset();
+  const form = document.getElementById('record-supplier-form');
+  if (form) form.reset();
+  
+  const today = new Date().toISOString().split('T')[0];
+  const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  
+  const invDate = document.querySelector('#record-supplier-form input[name="invoice_date"]');
+  const supDate = document.querySelector('#record-supplier-form input[name="supply_date"]');
+  const dueDate = document.querySelector('#record-supplier-form input[name="due_date"]');
+  const invNum = document.querySelector('#record-supplier-form input[name="invoice_number"]');
+  
+  if (invDate) invDate.value = today;
+  if (supDate) supDate.value = today;
+  if (dueDate) dueDate.value = d30;
+  if (invNum && !invNum.value) invNum.value = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
   openModal('modal-record-supplier');
 }
 
@@ -1224,6 +1239,16 @@ async function submitRecordSupplierPayment() {
 
   data.amount = parseFloat(data.amount || 0);
 
+  if (!data.company_name || !data.company_name.trim()) {
+    showToast('Please enter a Company / Vendor name.', 'error');
+    return;
+  }
+
+  if (isNaN(data.amount) || data.amount <= 0) {
+    showToast('Please enter a valid positive invoice amount.', 'error');
+    return;
+  }
+
   try {
     const res = await fetch('/api/suppliers/payments', {
       method: 'POST',
@@ -1233,7 +1258,13 @@ async function submitRecordSupplierPayment() {
 
     if (!res.ok) {
       const err = await res.json();
-      showToast(err.detail || 'Failed to record invoice', 'error');
+      let errMsg = 'Failed to record invoice';
+      if (typeof err.detail === 'string') {
+        errMsg = err.detail;
+      } else if (Array.isArray(err.detail)) {
+        errMsg = err.detail.map(e => e.msg || e.message).join(', ');
+      }
+      showToast(errMsg, 'error');
       return;
     }
 
@@ -1244,7 +1275,7 @@ async function submitRecordSupplierPayment() {
     showToast('Supplier payment invoice recorded successfully!');
 
   } catch (err) {
-    showToast(`Error: ${err}`, 'error');
+    showToast(`Error saving invoice: ${err}`, 'error');
   }
 }
 
