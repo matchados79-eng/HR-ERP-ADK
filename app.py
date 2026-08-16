@@ -349,6 +349,10 @@ def create_employee(emp: EmployeeCreate, user: dict = Depends(require_roles(["ad
     if existing:
         raise HTTPException(status_code=400, detail="Employee Code, Iqama/National ID, or Email already exists in the system.")
         
+    data = emp.dict()
+    if not data.get("worker_type"):
+        data["worker_type"] = "Direct"
+
     e_id = db.execute_cmd("""
         INSERT INTO employees (
             emp_code, first_name, last_name, arabic_name, email, phone,
@@ -356,16 +360,16 @@ def create_employee(emp: EmployeeCreate, user: dict = Depends(require_roles(["ad
             department_id, designation, hire_date, contract_type, contract_end_date,
             iqama_expiry_date, passport_number, passport_expiry_date, bank_name,
             iban, basic_salary, housing_allowance, transport_allowance, other_allowances,
-            gosi_number, status
+            worker_type, gosi_number, status
         ) VALUES (
             :emp_code, :first_name, :last_name, :arabic_name, :email, :phone,
             :national_id_iqama, :nationality, :gender, :is_saudi, :dob,
             :department_id, :designation, :hire_date, :contract_type, :contract_end_date,
             :iqama_expiry_date, :passport_number, :passport_expiry_date, :bank_name,
             :iban, :basic_salary, :housing_allowance, :transport_allowance, :other_allowances,
-            :gosi_number, :status
+            :worker_type, :gosi_number, :status
         )
-    """, emp.dict())
+    """, data)
     return {"message": "Employee profile created successfully", "id": e_id}
 
 @app.get("/api/employees/{emp_id}")
@@ -426,6 +430,8 @@ def update_employee(emp_id: int, emp: EmployeeUpdate, user: dict = Depends(requi
         
     data = emp.dict()
     data["id"] = emp_id
+    if not data.get("worker_type"):
+        data["worker_type"] = "Direct"
     
     db.execute_cmd("""
         UPDATE employees SET
@@ -454,6 +460,7 @@ def update_employee(emp_id: int, emp: EmployeeUpdate, user: dict = Depends(requi
             housing_allowance = :housing_allowance,
             transport_allowance = :transport_allowance,
             other_allowances = :other_allowances,
+            worker_type = :worker_type,
             gosi_number = :gosi_number,
             status = :status
         WHERE id = :id
@@ -1757,9 +1764,18 @@ def get_worker_timesheet(
             })
             
     base_sal = float(emp["basic_salary"] or 0)
-    daily_rate = float(detail.get("daily_rate") or (base_sal / 30.0 if base_sal > 0 else 83.33333333)) if detail else (base_sal / 30.0 if base_sal > 0 else 83.33333333)
-    hourly_rate = float(detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42)) if detail else (daily_rate / 8.0 if daily_rate > 0 else 10.42)
-    ot_rate = float(detail.get("ot_rate") or round(hourly_rate * 1.5, 2)) if detail else round(hourly_rate * 1.5, 2)
+    worker_type = emp.get("worker_type") or "Direct"
+    
+    if worker_type == "Direct":
+        # Direct: Rate depends on Monthly Basic / 30, then / 8
+        daily_rate = float(detail.get("daily_rate") or (base_sal / 30.0 if base_sal > 0 else 83.33333333)) if detail else (base_sal / 30.0 if base_sal > 0 else 83.33333333)
+        hourly_rate = float(detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42)) if detail else (daily_rate / 8.0 if daily_rate > 0 else 10.42)
+        ot_rate = float(detail.get("ot_rate") or round(hourly_rate * 1.5, 2)) if detail else round(hourly_rate * 1.5, 2)
+    else:
+        # Indirect: Regular only and hourly
+        daily_rate = float(detail.get("daily_rate") or (base_sal / 30.0 if base_sal > 0 else 0.0)) if detail else (base_sal / 30.0 if base_sal > 0 else 0.0)
+        hourly_rate = float(detail.get("hourly_rate") or (base_sal / 240.0 if base_sal > 0 else 25.0)) if detail else (base_sal / 240.0 if base_sal > 0 else 25.0)
+        ot_rate = 0.0  # Indirect workers are regular only
     
     return {
         "employee": {
@@ -1770,6 +1786,7 @@ def get_worker_timesheet(
             "designation": emp["designation"] or "Electrician Foreman",
             "department_name": emp.get("department_name") or "Operations",
             "is_saudi": emp["is_saudi"],
+            "worker_type": worker_type,
             "basic_salary": base_sal,
             "daily_rate": daily_rate,
             "hourly_rate": hourly_rate,

@@ -1013,7 +1013,14 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Worker Classification *</label>
+              <select name="worker_type" class="form-control" style="font-weight: 700;">
+                <option value="Direct" selected>🔨 Direct (Monthly/30 Rate)</option>
+                <option value="Indirect">🏢 Indirect (Regular Hourly)</option>
+              </select>
+            </div>
             <div class="form-group">
               <label>Hire Date *</label>
               <input type="date" name="hire_date" class="form-control" required>
@@ -1147,7 +1154,14 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label>Worker Type *</label>
+              <select id="edit-emp-worker-type" class="form-control" style="font-weight: 700;">
+                <option value="Direct">🔨 Direct (Monthly/30)</option>
+                <option value="Indirect">🏢 Indirect (Regular Hourly)</option>
+              </select>
+            </div>
             <div class="form-group">
               <label>Hire Date *</label>
               <input type="date" id="edit-emp-hire-date" class="form-control" required>
@@ -2189,15 +2203,24 @@
           <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px;">
             <!-- Rates & Cutoff Banner -->
             <div style="background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px;">
-              <div style="font-size: 0.8rem; font-weight: 800; color: #0F172A; margin-bottom: 8px;">💼 Pay Rates & Cutoff Period</div>
-              <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 0.8rem; font-weight: 800; color: #0F172A;">💼 Pay Rates & Classification</div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 700; color: #475569;">Worker Type:</span>
+                  <select id="ts-worker-type" class="form-control" style="font-size: 0.75rem; height: 26px; padding: 2px 6px; font-weight: 800; width: 190px;" onchange="onTimesheetWorkerTypeChanged()">
+                    <option value="Direct">🔨 Direct (Monthly ÷ 30)</option>
+                    <option value="Indirect">🏢 Indirect (Regular Hourly)</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 10px;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label style="font-size: 0.72rem;">Cutoff Period</label>
                   <input type="text" id="ts-cutoff-period" class="form-control" style="font-size: 0.8rem; height: 32px;" placeholder="July 01-31, 2026">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label style="font-size: 0.72rem;">Daily Rate (SAR)</label>
-                  <input type="number" step="0.00000001" id="ts-daily-rate" class="form-control" style="font-size: 0.8rem; height: 32px;" oninput="recalcTimesheetSummaryLive()">
+                  <input type="number" step="0.00000001" id="ts-daily-rate" class="form-control" style="font-size: 0.8rem; height: 32px;" oninput="onDailyRateInput()">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label style="font-size: 0.72rem;">Hourly Rate (SAR)</label>
@@ -2207,6 +2230,9 @@
                   <label style="font-size: 0.72rem;">O.T Rate (SAR)</label>
                   <input type="number" step="0.01" id="ts-ot-rate" class="form-control" style="font-size: 0.8rem; height: 32px;" oninput="recalcTimesheetSummaryLive()">
                 </div>
+              </div>
+              <div id="ts-worker-type-hint" style="font-size: 0.68rem; color: #2563EB; font-weight: 600; margin-top: 6px;">
+                🔨 Direct Worker: Daily Rate = Monthly/30 • Hourly Rate = Daily/8 • Overtime Eligible
               </div>
             </div>
 

@@ -743,13 +743,21 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     is_saudi = employee_data.get("is_saudi") == 1
     nat_badge = "Saudi National" if is_saudi else "Expatriate"
     
+    worker_type = payroll_detail.get("worker_type") or employee_data.get("worker_type") or "Direct"
+    wt_badge = "🔨 Direct (Monthly/30)" if worker_type == "Direct" else "🏢 Indirect (Regular Hourly)"
+
     # Days & Rates calculation
     days_worked = float(payroll_detail.get("days_worked") or 30.0)
     basic = float(payroll_detail.get("basic_salary") or 0.0)
     
-    daily_rate = float(payroll_detail.get("daily_rate") or (basic / 30.0 if basic > 0 else 83.33333333))
-    hourly_rate = float(payroll_detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42))
-    ot_rate = float(payroll_detail.get("ot_rate") or round(hourly_rate * 1.5, 2))
+    if worker_type == "Direct":
+        daily_rate = float(payroll_detail.get("daily_rate") or (basic / 30.0 if basic > 0 else 83.33333333))
+        hourly_rate = float(payroll_detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42))
+        ot_rate = float(payroll_detail.get("ot_rate") or round(hourly_rate * 1.5, 2))
+    else:
+        daily_rate = float(payroll_detail.get("daily_rate") or 0.0)
+        hourly_rate = float(payroll_detail.get("hourly_rate") or (basic / 240.0 if basic > 0 else 25.0))
+        ot_rate = 0.0
     
     # Hours & Base Earnings
     working_hours = float(payroll_detail.get("working_hours") if payroll_detail.get("working_hours") is not None else (days_worked * 8.0 if days_worked > 0 else 64.0))
@@ -1111,6 +1119,7 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
           <div class="emp-main-role">{designation}</div>
           <div class="emp-tags">
             <span class="pill-badge { 'saudi' if is_saudi else 'expat' }">{nat_badge}</span>
+            <span class="pill-badge">{wt_badge}</span>
             <span class="pill-badge">Code: {emp_code}</span>
             <span class="pill-badge">Dept: {dept_name}</span>
           </div>

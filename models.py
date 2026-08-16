@@ -39,6 +39,7 @@ class EmployeeCreate(BaseModel):
     housing_allowance: float = 0.0
     transport_allowance: float = 0.0
     other_allowances: float = 0.0
+    worker_type: Optional[str] = "Direct"  # 'Direct' (Site / Monthly / 30) or 'Indirect' (Regular Hourly)
     gosi_number: Optional[str] = None
     status: Optional[str] = "Active"
 
@@ -150,6 +151,7 @@ class WorkerMonthlyPayRequest(BaseModel):
     month: int
     year: int
     employee_id: int
+    worker_type: Optional[str] = "Direct"
     basic_salary: float
     housing_allowance: Optional[float] = 0.0
     transport_allowance: Optional[float] = 0.0
@@ -202,6 +204,7 @@ class BulkTimesheetSaveRequest(BaseModel):
     employee_id: int
     month: int
     year: int
+    worker_type: Optional[str] = "Direct"
     cutoff_period: Optional[str] = None
     days: List[DailyTimesheetEntry]
     

@@ -578,6 +578,8 @@ function openEditEmployeeModal(empId) {
   document.getElementById('edit-emp-is-saudi').value = emp.is_saudi;
   if (document.getElementById('edit-emp-dept-select')) document.getElementById('edit-emp-dept-select').value = emp.department_id || '';
   document.getElementById('edit-emp-designation').value = emp.designation;
+  const wtEl = document.getElementById('edit-emp-worker-type');
+  if (wtEl) wtEl.value = emp.worker_type || 'Direct';
   document.getElementById('edit-emp-hire-date').value = emp.hire_date;
   document.getElementById('edit-emp-contract-type').value = emp.contract_type || 'Fixed';
   document.getElementById('edit-emp-status').value = emp.status || 'Active';
@@ -595,6 +597,7 @@ function openEditEmployeeModal(empId) {
 
 async function submitEditEmployee() {
   const empId = document.getElementById('edit-emp-id').value;
+  const wtVal = document.getElementById('edit-emp-worker-type') ? document.getElementById('edit-emp-worker-type').value : 'Direct';
   const payload = {
     emp_code: document.getElementById('edit-emp-code').value,
     first_name: document.getElementById('edit-emp-first-name').value,
@@ -609,6 +612,7 @@ async function submitEditEmployee() {
     dob: null,
     department_id: document.getElementById('edit-emp-dept-select').value ? parseInt(document.getElementById('edit-emp-dept-select').value) : null,
     designation: document.getElementById('edit-emp-designation').value,
+    worker_type: wtVal,
     hire_date: document.getElementById('edit-emp-hire-date').value,
     contract_type: document.getElementById('edit-emp-contract-type').value,
     contract_end_date: null,
@@ -1297,6 +1301,11 @@ async function openWorkerTimesheetModal(employeeId) {
     const cutEl = document.getElementById('ts-cutoff-period');
     if (cutEl) cutEl.value = cutoff;
     
+    const wt = currentTimesheetEmp.worker_type || 'Direct';
+    const wtEl = document.getElementById('ts-worker-type');
+    if (wtEl) wtEl.value = wt;
+    updateWorkerTypeHint(wt);
+
     const drEl = document.getElementById('ts-daily-rate');
     if (drEl) drEl.value = parseFloat(currentTimesheetEmp.daily_rate || 0).toFixed(8);
     const hrEl = document.getElementById('ts-hourly-rate');
@@ -1324,6 +1333,53 @@ async function openWorkerTimesheetModal(employeeId) {
     console.error('Error opening timesheet:', err);
     showToast(`Error opening timesheet: ${err.message || err}`, 'error');
   }
+}
+
+function updateWorkerTypeHint(type) {
+  const hintEl = document.getElementById('ts-worker-type-hint');
+  if (!hintEl) return;
+  if (type === 'Direct') {
+    hintEl.innerHTML = '🔨 <strong>Direct Worker:</strong> Daily Rate = Monthly/30 • Hourly Rate = Daily/8 • Overtime Eligible';
+    hintEl.style.color = '#2563EB';
+  } else {
+    hintEl.innerHTML = '🏢 <strong>Indirect Worker:</strong> Regular Only & Hourly Rate • Overtime Not Applicable';
+    hintEl.style.color = '#7C3AED';
+  }
+}
+
+function onTimesheetWorkerTypeChanged() {
+  const wt = document.getElementById('ts-worker-type').value;
+  updateWorkerTypeHint(wt);
+  
+  const baseSal = currentTimesheetEmp ? parseFloat(currentTimesheetEmp.basic_salary || 0) : 0;
+  if (wt === 'Direct') {
+    const dailyRate = baseSal > 0 ? (baseSal / 30.0) : 83.33333333;
+    const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    document.getElementById('ts-daily-rate').value = dailyRate.toFixed(8);
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('ts-ot-rate').value = otRate.toFixed(2);
+  } else {
+    // Indirect: Regular only and hourly
+    const hourlyRate = baseSal > 0 ? Math.round((baseSal / 240.0) * 100) / 100 : 25.00;
+    document.getElementById('ts-daily-rate').value = '0.00000000';
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('ts-ot-rate').value = '0.00';
+  }
+  recalcTimesheetSummaryLive();
+}
+
+function onDailyRateInput() {
+  const dailyRate = parseFloat(document.getElementById('ts-daily-rate').value || 0);
+  if (dailyRate > 0) {
+    const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+    if (document.getElementById('ts-worker-type').value === 'Direct') {
+      document.getElementById('ts-ot-rate').value = otRate.toFixed(2);
+    }
+  }
+  recalcTimesheetSummaryLive();
 }
 
 function renderTimesheetCalendarGrid() {
@@ -1595,16 +1651,25 @@ function recalcTimesheetSummaryLive() {
     }
   });
 
-  const totOtHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.ot_hours) || 0), 0);
+  const wt = document.getElementById('ts-worker-type') ? document.getElementById('ts-worker-type').value : 'Direct';
+  
+  let totOtHours = 0.0;
+  let otPay = 0.0;
+  let restDayPay = 0.0;
+  let holidayPay = 0.0;
+  
+  if (wt === 'Direct') {
+    totOtHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.ot_hours) || 0), 0);
+    otPay = Math.round(totOtHours * otRate * 100) / 100;
+    restDayPay = Math.round(restDayHours * hourlyRate * 100) / 100;
+    holidayPay = Math.round(holidayHours * hourlyRate * 100) / 100;
+  }
+
   const daysWorked = currentTimesheetDays.filter(d => (parseFloat(d.regular_hours) || 0) > 0 || d.day_type === 'Regular').length;
   const mealQty = currentTimesheetDays.filter(d => parseInt(d.meal_allowance) === 1).length;
 
   const regularPay = Math.round(totRegHours * hourlyRate * 100) / 100;
-  const otPay = Math.round(totOtHours * otRate * 100) / 100;
   const subtotalPay = Math.round((regularPay + otPay) * 100) / 100;
-
-  const restDayPay = Math.round(restDayHours * hourlyRate * 100) / 100;
-  const holidayPay = Math.round(holidayHours * hourlyRate * 100) / 100;
   const mealPay = Math.round(mealQty * 10.0 * 100) / 100;
 
   const additionAdj = parseFloat(document.getElementById('ts-adjustment-add').value || 0);
@@ -1643,11 +1708,13 @@ async function submitSaveWorkerTimesheetAndPayroll() {
   const employeeId = parseInt(document.getElementById('ts-employee-id').value);
   const month = parseInt(document.getElementById('ts-month').value);
   const year = parseInt(document.getElementById('ts-year').value);
+  const wt = document.getElementById('ts-worker-type') ? document.getElementById('ts-worker-type').value : 'Direct';
 
   const payload = {
     employee_id: employeeId,
     month: month,
     year: year,
+    worker_type: wt,
     cutoff_period: document.getElementById('ts-cutoff-period').value || null,
     days: currentTimesheetDays,
     daily_rate: parseFloat(document.getElementById('ts-daily-rate').value || 0),

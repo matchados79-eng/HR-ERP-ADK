@@ -306,6 +306,7 @@ def init_db():
     # Industrial Payslip Itemized Breakdown Columns
     payslip_cols = [
         ("cutoff_period", "TEXT"),
+        ("worker_type", "TEXT DEFAULT 'Direct'"),
         ("days_worked", "REAL DEFAULT 0.0"),
         ("daily_rate", "REAL DEFAULT 0.0"),
         ("hourly_rate", "REAL DEFAULT 0.0"),
@@ -331,11 +332,16 @@ def init_db():
         ("adjustment_sub", "REAL DEFAULT 0.0"),
         ("actual_pay", "REAL DEFAULT 0.0")
     ]
-    for col_name, col_type in payslip_cols:
+    for col_name, col_def in payslip_cols:
         try:
-            cursor.execute(f"ALTER TABLE payroll_details ADD COLUMN {col_name} {col_type};")
+            cursor.execute(f"ALTER TABLE payroll_details ADD COLUMN {col_name} {col_def};")
         except Exception:
             pass
+
+    try:
+        cursor.execute("ALTER TABLE employees ADD COLUMN worker_type TEXT DEFAULT 'Direct';")
+    except Exception:
+        pass
 
     # Auto-populate suppliers directory from existing payments if not already present
     try:
