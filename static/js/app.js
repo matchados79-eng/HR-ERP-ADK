@@ -687,9 +687,9 @@ async function viewEmployeeDetail(empId) {
           <td>${d.expiry_date || 'N/A'}</td>
           <td>
             <div style="display: flex; gap: 6px;">
-              <a href="/api/documents/${d.id}/download" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">
+              <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="downloadDocumentFile(${d.id})">
                 ⬇️ Download
-              </a>
+              </button>
               ${currentUserRole !== 'viewer' ? `
                 <button class="btn btn-danger" style="padding: 2px 8px; font-size: 0.75rem;" onclick="deleteDocument(${d.id})">
                   🗑️
@@ -854,9 +854,9 @@ async function loadPayrollRuns() {
         <td><span class="badge badge-active">${r.status}</span></td>
         <td>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <a href="/api/payroll/runs/${r.id}/wps.csv" class="btn btn-success" style="padding: 2px 8px; font-size: 0.75rem;">
+            <button class="btn btn-success" style="padding: 2px 8px; font-size: 0.75rem;" onclick="downloadWpsFile(${r.id})">
               🇸🇦 SAMA WPS CSV
-            </a>
+            </button>
             <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="viewPayrollDetails(${r.id})">
               Payslips
             </button>
@@ -956,9 +956,9 @@ async function viewPayrollDetails(runId) {
                 <td>SAR ${d.gosi_employee.toLocaleString()}</td>
                 <td><strong style="color: var(--primary);">SAR ${d.net_salary.toLocaleString()}</strong></td>
                 <td>
-                  <a href="/api/payroll/details/${d.id}/payslip.pdf" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">
+                  <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openPayslipPdf(${d.id})">
                     📄 Payslip PDF
-                  </a>
+                  </button>
                 </td>
               </tr>
             `).join('')}
@@ -1200,9 +1200,9 @@ async function loadSupplierPayments() {
                   ✏️ Edit
                 </button>
               ` : ''}
-              <a href="/api/suppliers/payments/${sp.id}/statement.pdf" target="_blank" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">
+              <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openSupplierStatementPdf(${sp.id})">
                 📜 Statement
-              </a>
+              </button>
               ${currentUserRole === 'admin' ? `
                 <button class="btn btn-danger" style="padding: 2px 8px; font-size: 0.75rem;" onclick="deleteSupplierPayment(${sp.id})">🗑️</button>
               ` : ''}
@@ -1822,9 +1822,9 @@ async function triggerGoogleDriveBackup() {
       banner.style.display = 'block';
       banner.innerHTML = `
         ✅ <strong>Backup Completed Successfully!</strong> File: <code>${data.backup_filename}</code><br/>
-        <a href="${data.backup_download_url}" target="_blank" class="btn btn-outline" style="margin-top: 6px; padding: 4px 10px; font-size: 0.8rem;">
+        <button onclick="downloadBackupArchive('${data.backup_download_url}')" class="btn btn-outline" style="margin-top: 6px; padding: 4px 10px; font-size: 0.8rem;">
           ⬇️ Download Backup Archive (.ZIP)
-        </a>
+        </button>
       `;
     }
     showToast(`Backup archive created: ${data.backup_filename}`);
@@ -1883,3 +1883,31 @@ async function submitRestoreBackup() {
     showToast(`Restore error: ${err}`, 'error');
   }
 }
+
+// Authenticated Browser File & PDF Opening Handlers
+function openSupplierStatementPdf(spId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/suppliers/payments/${spId}/statement.pdf?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function openPayslipPdf(detailId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/payroll/details/${detailId}/payslip.pdf?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function downloadWpsFile(runId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/payroll/runs/${runId}/wps.csv?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function downloadDocumentFile(docId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/documents/${docId}/download?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function downloadBackupArchive(url) {
+  const token = localStorage.getItem('jwt_token') || '';
+  const sep = url.includes('?') ? '&' : '?';
+  window.open(`${url}${sep}token=${encodeURIComponent(token)}`, '_blank');
+}
+

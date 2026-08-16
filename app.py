@@ -84,12 +84,21 @@ class UserUpdateRequest(BaseModel):
     role: str
     password: Optional[str] = None
 
-# Dependency for Authenticated Requests
-def get_current_user(authorization: Optional[str] = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
+# Dependency for Authenticated Requests (Supports both Bearer Header and Query Token for PDF/File downloads)
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None)
+):
+    raw_token = None
+    if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization.split(" ")[1]
+    elif token and token.strip():
+        raw_token = token.strip()
+        
+    if not raw_token:
         raise HTTPException(status_code=401, detail="Authentication required. Please log in first.")
-    token = authorization.split(" ")[1]
-    payload = auth.verify_jwt_token(token)
+        
+    payload = auth.verify_jwt_token(raw_token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired JWT session. Please log in again.")
     return payload
