@@ -10,6 +10,26 @@ let allSupplierPayments = [];
 let currentRosterWorkers = [];
 let currentPayrollRunId = null;
 
+const MONTH_NAMES_MAP = {
+  1: 'January', 2: 'February', 3: 'March', 4: 'April',
+  5: 'May', 6: 'June', 7: 'July', 8: 'August',
+  9: 'September', 10: 'October', 11: 'November', 12: 'December'
+};
+
+function openModal(modalId) {
+  const m = document.getElementById(modalId);
+  if (m) {
+    m.classList.add('active');
+  }
+}
+
+function closeModal(modalId) {
+  const m = document.getElementById(modalId);
+  if (m) {
+    m.classList.remove('active');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   checkAuthSession();
   runEosbCalc();
@@ -1198,10 +1218,13 @@ let currentTimesheetDays = [];
 let currentTimesheetEmp = null;
 
 async function openWorkerTimesheetModal(employeeId) {
-  const month = parseInt(document.getElementById('roster-select-month').value);
-  const year = parseInt(document.getElementById('roster-select-year').value);
+  const monthEl = document.getElementById('roster-select-month');
+  const yearEl = document.getElementById('roster-select-year');
+  const month = monthEl ? (parseInt(monthEl.value) || (new Date().getMonth() + 1)) : (new Date().getMonth() + 1);
+  const year = yearEl ? (parseInt(yearEl.value) || (new Date().getFullYear())) : (new Date().getFullYear());
+  const monthName = MONTH_NAMES_MAP[month] || `Month ${month}`;
 
-  showToast(`Loading timesheet calendar for ${MONTH_NAMES_MAP[month]} ${year}...`, 'info');
+  showToast(`Loading timesheet calendar for ${monthName} ${year}...`, 'info');
 
   try {
     const res = await fetch(`/api/payroll/timesheet?employee_id=${employeeId}&month=${month}&year=${year}`, {
@@ -1210,7 +1233,10 @@ async function openWorkerTimesheetModal(employeeId) {
 
     if (!res.ok) {
       const err = await res.json();
-      showToast(err.detail || 'Failed to load timesheet', 'error');
+      let errMsg = 'Failed to load timesheet';
+      if (typeof err.detail === 'string') errMsg = err.detail;
+      else if (Array.isArray(err.detail)) errMsg = err.detail.map(e => e.msg || e.message).join(', ');
+      showToast(errMsg, 'error');
       return;
     }
 
@@ -1219,34 +1245,52 @@ async function openWorkerTimesheetModal(employeeId) {
     currentTimesheetDays = data.days || [];
     const detail = data.detail || {};
 
-    document.getElementById('ts-employee-id').value = currentTimesheetEmp.id;
-    document.getElementById('ts-month').value = month;
-    document.getElementById('ts-year').value = year;
-    document.getElementById('ts-is-saudi').value = currentTimesheetEmp.is_saudi;
+    const empIdEl = document.getElementById('ts-employee-id');
+    if (empIdEl) empIdEl.value = currentTimesheetEmp.id;
+    const mEl = document.getElementById('ts-month');
+    if (mEl) mEl.value = month;
+    const yEl = document.getElementById('ts-year');
+    if (yEl) yEl.value = year;
+    const sEl = document.getElementById('ts-is-saudi');
+    if (sEl) sEl.value = currentTimesheetEmp.is_saudi;
 
-    document.getElementById('ts-worker-name-title').innerText = `${currentTimesheetEmp.first_name} ${currentTimesheetEmp.last_name} — Monthly Timesheet Calendar`;
-    document.getElementById('ts-worker-meta-subtitle').innerText = `Designation: ${currentTimesheetEmp.designation} • ${currentTimesheetEmp.department_name} • Code: ${currentTimesheetEmp.emp_code} • ${MONTH_NAMES_MAP[month]} ${year}`;
-    document.getElementById('ts-calendar-month-name').innerText = `${MONTH_NAMES_MAP[month]} ${year}`;
+    const titleEl = document.getElementById('ts-worker-name-title');
+    if (titleEl) titleEl.innerText = `${currentTimesheetEmp.first_name} ${currentTimesheetEmp.last_name} — Monthly Timesheet Calendar`;
+    const subEl = document.getElementById('ts-worker-meta-subtitle');
+    if (subEl) subEl.innerText = `Designation: ${currentTimesheetEmp.designation} • ${currentTimesheetEmp.department_name} • Code: ${currentTimesheetEmp.emp_code} • ${monthName} ${year}`;
+    const calMonthEl = document.getElementById('ts-calendar-month-name');
+    if (calMonthEl) calMonthEl.innerText = `${monthName} ${year}`;
 
-    const cutoff = detail.cutoff_period || `${MONTH_NAMES_MAP[month]} 01-31, ${year}`;
-    document.getElementById('ts-cutoff-period').value = cutoff;
-    document.getElementById('ts-daily-rate').value = parseFloat(currentTimesheetEmp.daily_rate).toFixed(8);
-    document.getElementById('ts-hourly-rate').value = parseFloat(currentTimesheetEmp.hourly_rate).toFixed(2);
-    document.getElementById('ts-ot-rate').value = parseFloat(currentTimesheetEmp.ot_rate).toFixed(2);
+    const cutoff = detail.cutoff_period || `${monthName} 01-31, ${year}`;
+    const cutEl = document.getElementById('ts-cutoff-period');
+    if (cutEl) cutEl.value = cutoff;
+    
+    const drEl = document.getElementById('ts-daily-rate');
+    if (drEl) drEl.value = parseFloat(currentTimesheetEmp.daily_rate || 0).toFixed(8);
+    const hrEl = document.getElementById('ts-hourly-rate');
+    if (hrEl) hrEl.value = parseFloat(currentTimesheetEmp.hourly_rate || 0).toFixed(2);
+    const otEl = document.getElementById('ts-ot-rate');
+    if (otEl) otEl.value = parseFloat(currentTimesheetEmp.ot_rate || 0).toFixed(2);
 
-    document.getElementById('ts-wps-deduction').value = detail.wps_deduction !== undefined ? detail.wps_deduction : 0.00;
-    document.getElementById('ts-water-bill').value = detail.water_bill !== undefined ? detail.water_bill : 12.89;
-    document.getElementById('ts-other-deductions').value = detail.other_deductions !== undefined ? detail.other_deductions : 0.00;
-    document.getElementById('ts-cash-advance').value = detail.cash_advance !== undefined ? detail.cash_advance : 400.00;
-    document.getElementById('ts-adjustment-add').value = detail.adjustment_add !== undefined ? detail.adjustment_add : 0.00;
-    document.getElementById('ts-adjustment-sub').value = detail.adjustment_sub !== undefined ? detail.adjustment_sub : 0.00;
+    const setVal = (id, val, def) => {
+      const el = document.getElementById(id);
+      if (el) el.value = (val !== undefined && val !== null) ? val : def;
+    };
+
+    setVal('ts-wps-deduction', detail.wps_deduction, 0.00);
+    setVal('ts-water-bill', detail.water_bill, 12.89);
+    setVal('ts-other-deductions', detail.other_deductions, 0.00);
+    setVal('ts-cash-advance', detail.cash_advance, 400.00);
+    setVal('ts-adjustment-add', detail.adjustment_add, 0.00);
+    setVal('ts-adjustment-sub', detail.adjustment_sub, 0.00);
 
     renderTimesheetCalendarGrid();
     recalcTimesheetSummaryLive();
     openModal('modal-worker-timesheet-calendar');
 
   } catch (err) {
-    showToast(`Error opening timesheet: ${err}`, 'error');
+    console.error('Error opening timesheet:', err);
+    showToast(`Error opening timesheet: ${err.message || err}`, 'error');
   }
 }
 
