@@ -208,14 +208,16 @@ def seed_database():
     ]
 
     for sp in suppliers:
+        sup_start = sp.get("supply_start_date") or sp["supply_date"]
+        sup_end = sp.get("supply_end_date") or sp["supply_date"]
         sp_id = db.execute_cmd("""
             INSERT INTO supplier_payments (
                 company_name, invoice_number, invoice_date, due_date, invoice_details,
-                supply_date, amount, paid_amount, remaining_amount, status, payment_date, remarks, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                supply_date, supply_start_date, supply_end_date, amount, paid_amount, remaining_amount, status, payment_date, remarks, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             sp["company_name"], sp["invoice_number"], sp["invoice_date"], sp["due_date"],
-            sp["invoice_details"], sp["supply_date"], sp["amount"], sp["paid_amount"],
+            sp["invoice_details"], sp["supply_date"], sup_start, sup_end, sp["amount"], sp["paid_amount"],
             sp["remaining_amount"], sp["status"], sp.get("payment_date"), sp["remarks"],
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))

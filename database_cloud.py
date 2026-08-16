@@ -5,36 +5,44 @@ import tempfile
 from typing import List, Dict, Any, Optional
 
 DB_WORKSPACE_PATH = os.path.join(os.path.dirname(__file__), "saudi_hr.db")
-DB_TMP_PATH = os.path.join(tempfile.gettempdir(), "saudi_hr_runtime.db")
+DB_TMP_PATH = os.path.join(tempfile.gettempdir(), "saudi_hr.db")
 
 def is_vercel() -> bool:
     return bool(os.environ.get("VERCEL"))
 
+def get_db_path() -> str:
+    """Returns persistent database path. Uses /tmp on Vercel serverless, workspace otherwise."""
+    if is_vercel():
+        if not os.path.exists(DB_TMP_PATH):
+            if os.path.exists(DB_WORKSPACE_PATH):
+                try:
+                    shutil.copy2(DB_WORKSPACE_PATH, DB_TMP_PATH)
+                except Exception:
+                    pass
+        return DB_TMP_PATH
+    return DB_WORKSPACE_PATH
+
 def sync_from_workspace():
-    """Restores database from persistent workspace storage to runtime temp directory."""
-    if os.path.exists(DB_WORKSPACE_PATH) and os.path.getsize(DB_WORKSPACE_PATH) > 0:
+    """No-op on local persistent storage; restores workspace file to /tmp on Vercel."""
+    if is_vercel() and os.path.exists(DB_WORKSPACE_PATH):
         try:
             shutil.copy2(DB_WORKSPACE_PATH, DB_TMP_PATH)
-        except Exception as e:
-            print(f"Warning syncing DB from workspace: {e}")
+        except Exception:
+            pass
 
 def sync_to_workspace():
-    """Flushes runtime database to persistent workspace storage."""
-    if is_vercel():
-        return
-    if os.path.exists(DB_TMP_PATH):
-        try:
-            shutil.copy2(DB_TMP_PATH, DB_WORKSPACE_PATH)
-        except Exception as e:
-            print(f"Warning syncing DB to workspace: {e}")
+    """Checkpoints WAL to ensure database file is completely persisted to disk."""
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=10.0)
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
+        conn.close()
+    except Exception:
+        pass
 
 def get_db_connection():
     """Returns a thread-safe SQLite connection with WAL mode and foreign key constraints enabled."""
-    if not os.path.exists(DB_TMP_PATH):
-        if os.path.exists(DB_WORKSPACE_PATH) and os.path.getsize(DB_WORKSPACE_PATH) > 0:
-            sync_from_workspace()
-            
-    conn = sqlite3.connect(DB_TMP_PATH, timeout=30.0, check_same_thread=False)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     try:
@@ -45,7 +53,6 @@ def get_db_connection():
     return conn
 
 def init_db():
-    sync_from_workspace()
     conn = get_db_connection()
     cursor = conn.cursor()
     
