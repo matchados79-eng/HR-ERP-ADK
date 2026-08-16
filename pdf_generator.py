@@ -31,6 +31,55 @@ COLOR_NEUTRAL_BORDER = colors.HexColor('#E2E8F0') # Slate 200 Border
 COLOR_TEXT_MAIN = colors.HexColor('#0F172A')      # Slate 900
 COLOR_TEXT_MUTED = colors.HexColor('#64748B')     # Slate 500
 
+MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+def format_long_date(date_val: Optional[str]) -> str:
+    """Formats 'YYYY-MM-DD' into beautiful calendar format like '16 Aug 2026'."""
+    if not date_val or not str(date_val).strip() or str(date_val).strip() in ("-", "N/A", "None", ""):
+        return "-"
+    raw = str(date_val).strip()
+    try:
+        if len(raw) >= 10:
+            dt = datetime.strptime(raw[:10], "%Y-%m-%d")
+            return dt.strftime("%d %b %Y")
+    except Exception:
+        pass
+    return raw
+
+def format_date_range(start_val: Optional[str], end_val: Optional[str]) -> str:
+    """Formats start and end dates into '01 Jul 2026 – 31 Jul 2026'."""
+    d1 = format_long_date(start_val)
+    d2 = format_long_date(end_val)
+    if d1 == "-" and d2 == "-":
+        return "N/A"
+    if d1 != "-" and d2 != "-" and d1 != d2:
+        return f"{d1} – {d2}"
+    return d1 if d1 != "-" else d2
+
+def format_long_datetime(dt_val: Optional[Any] = None) -> str:
+    """Formats current or provided datetime into '16 Aug 2026, 09:00 PM'."""
+    if dt_val is None:
+        dt = datetime.now()
+    elif isinstance(dt_val, datetime):
+        dt = dt_val
+    else:
+        try:
+            dt = datetime.strptime(str(dt_val)[:19], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            dt = datetime.now()
+    return dt.strftime("%d %b %Y, %I:%M %p")
+
+def format_pay_period(month_val: Any, year_val: Any) -> str:
+    """Formats month and year into calendar month format e.g. 'August 2026'."""
+    try:
+        m = int(month_val)
+        y = int(year_val)
+        if 1 <= m <= 12:
+            return f"{MONTH_NAMES[m]} {y}"
+    except Exception:
+        pass
+    return f"{month_val}/{year_val}"
+
 def get_modern_styles():
     """Builds a comprehensive typography hierarchy for executive PDF exports."""
     styles = getSampleStyleSheet()
@@ -207,7 +256,7 @@ def format_status_pill(status: str) -> str:
 # =========================================================================
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
     """
-    Generates an official Bilingual Saudi Standard Payslip PDF with executive design.
+    Generates an official Bilingual Saudi Standard Payslip PDF with executive design and calendar formatting.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -228,11 +277,13 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     gosi_reg = company_info.get("gosi_reg_number", "309481920")
     address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
     
+    pay_period_str = format_pay_period(payroll_detail.get('month', ''), payroll_detail.get('year', ''))
+    
     # 1. Executive Top Header
     header_data = [
         [
             Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • GOSI: {gosi_reg} • {address}</font>", st['company_meta']),
-            Paragraph("<b>SALARY PAYSLIP VOUCHER</b><br/><font size=7.5 color='#D97706'><b>قسيمة الراتب الرسمية</b></font><br/><font size=7 color='#64748B'>Period: " + f"{payroll_detail.get('month', '')}/{payroll_detail.get('year', '')}</font>", st['doc_title'])
+            Paragraph(f"<b>SALARY PAYSLIP VOUCHER</b><br/><font size=7.5 color='#D97706'><b>قسيمة الراتب الرسمية</b></font><br/><font size=7 color='#64748B'>Period: {pay_period_str}</font>", st['doc_title'])
         ]
     ]
     header_table = Table(header_data, colWidths=[4.2*inch, 3.4*inch])
@@ -264,7 +315,7 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         ],
         [
             Paragraph("<b>Bank / IBAN:</b>", st['cell_bold']), Paragraph(f"{employee_data.get('bank_name', 'Bank')} • {employee_data.get('iban', 'N/A')}", st['cell_text']),
-            Paragraph("<b>GOSI Reg #:</b>", st['cell_bold']), Paragraph(str(employee_data.get("gosi_number", "N/A")), st['cell_text'])
+            Paragraph("<b>Pay Period:</b>", st['cell_bold']), Paragraph(pay_period_str, st['cell_text'])
         ]
     ]
     emp_table = Table(emp_info, colWidths=[1.4*inch, 2.4*inch, 1.3*inch, 2.5*inch])
@@ -406,7 +457,7 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
 # =========================================================================
 def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: dict) -> bytes:
     """
-    Generates an executive-grade Supplier Statement & Payment Voucher PDF.
+    Generates an executive-grade Supplier Statement & Payment Voucher PDF with calendar long date format.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -430,15 +481,19 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     paid_amt = float(sp.get("paid_amount", 0.0))
     rem_amt = float(sp.get("remaining_amount", max(0.0, total_amt - paid_amt)))
     
-    start_d = sp.get("supply_start_date") or sp.get("supply_date", "")
-    end_d = sp.get("supply_end_date") or sp.get("supply_date", "")
-    supply_period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
+    inv_date_formatted = format_long_date(sp.get("invoice_date"))
+    due_date_formatted = format_long_date(sp.get("due_date"))
+    supply_period_formatted = format_date_range(
+        sp.get("supply_start_date") or sp.get("supply_date"),
+        sp.get("supply_end_date") or sp.get("supply_date")
+    )
+    gen_time_formatted = format_long_datetime()
     
     # 1. Executive Top Header
     header_data = [
         [
             Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • {address}</font>", st['company_meta']),
-            Paragraph("<b>VENDOR STATEMENT OF ACCOUNT</b><br/><font size=7.5 color='#D97706'><b>كشف حساب المورد وسند الصرف</b></font><br/><font size=7 color='#64748B'>Generated: " + datetime.now().strftime("%Y-%m-%d %H:%M") + "</font>", st['doc_title'])
+            Paragraph(f"<b>VENDOR STATEMENT OF ACCOUNT</b><br/><font size=7.5 color='#D97706'><b>كشف حساب المورد وسند الصرف</b></font><br/><font size=7 color='#64748B'>Generated: {gen_time_formatted}</font>", st['doc_title'])
         ]
     ]
     header_table = Table(header_data, colWidths=[4.2*inch, 3.4*inch])
@@ -480,18 +535,18 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     elements.append(kpi_table)
     elements.append(Spacer(1, 10))
     
-    # 3. Invoice & Vendor Metadata Card
+    # 3. Invoice & Vendor Metadata Card (Formatted Calendar Dates)
     inv_info = [
         [
             Paragraph("<b>Vendor Company:</b>", st['cell_bold']), Paragraph(str(sp.get("company_name", "")), st['cell_text']),
             Paragraph("<b>Invoice Number:</b>", st['cell_bold']), Paragraph(str(sp.get("invoice_number", "N/A")), st['cell_text'])
         ],
         [
-            Paragraph("<b>Invoice Date:</b>", st['cell_bold']), Paragraph(str(sp.get("invoice_date", "")), st['cell_text']),
-            Paragraph("<b>Payment Due Date:</b>", st['cell_bold']), Paragraph(str(sp.get("due_date", "")), st['cell_text'])
+            Paragraph("<b>Invoice Date:</b>", st['cell_bold']), Paragraph(inv_date_formatted, st['cell_text']),
+            Paragraph("<b>Payment Due Date:</b>", st['cell_bold']), Paragraph(due_date_formatted, st['cell_text'])
         ],
         [
-            Paragraph("<b>Supply Period:</b>", st['cell_bold']), Paragraph(supply_period, st['cell_text']),
+            Paragraph("<b>Supply Period:</b>", st['cell_bold']), Paragraph(supply_period_formatted, st['cell_text']),
             Paragraph("<b>System Record ID:</b>", st['cell_bold']), Paragraph(f"#INV-{sp.get('id', '')}", st['cell_text'])
         ],
         [
@@ -512,7 +567,7 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     elements.append(inv_table)
     elements.append(Spacer(1, 10))
     
-    # 4. Disbursal Transaction History Table
+    # 4. Disbursal Transaction History Table (Formatted Calendar Dates)
     elements.append(Paragraph("<b>Disbursal Settlements & Transaction Logs</b>", st['section_heading']))
     elements.append(Spacer(1, 4))
     
@@ -530,17 +585,17 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
         log_rows.append([Paragraph("No payments disbursed yet. Full amount remains outstanding.", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("-", st['cell_text']), Paragraph("SAR 0.00", st['cell_right'])])
     else:
         for idx, lg in enumerate(payment_logs):
-            bg_color = COLOR_NEUTRAL_BG if idx % 2 == 1 else colors.white
             amt_lg = float(lg.get("payment_amount", 0.0))
+            pay_date_formatted = format_long_date(lg.get("payment_date"))
             log_rows.append([
-                Paragraph(str(lg.get("payment_date", "")), st['cell_text']),
+                Paragraph(pay_date_formatted, st['cell_text']),
                 Paragraph(str(lg.get("payment_method", "Bank Transfer")), st['cell_text']),
                 Paragraph(str(lg.get("reference_number", "N/A")), st['cell_text']),
                 Paragraph(str(lg.get("notes", "N/A")), st['cell_text']),
                 Paragraph(f"<b>SAR {amt_lg:,.2f}</b>", st['cell_right_bold'])
             ])
             
-    history_table = Table(log_rows, colWidths=[1.1*inch, 1.3*inch, 1.4*inch, 2.2*inch, 1.6*inch])
+    history_table = Table(log_rows, colWidths=[1.3*inch, 1.2*inch, 1.4*inch, 2.2*inch, 1.5*inch])
     history_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_DARK),
         ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),
@@ -594,7 +649,7 @@ def generate_supplier_summary_report_pdf(
 ) -> bytes:
     """
     Generates a modern, executive-grade Accounts Payable & Supplier Invoices Report PDF
-    with multi-supplier selection support, vendor subtotals, and luxury Saudi corporate styling.
+    with multi-supplier selection support, vendor subtotals, and calendar long date formatting.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -614,11 +669,13 @@ def generate_supplier_summary_report_pdf(
     cr_num = company_info.get("cr_number", "1010894512")
     address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
     
+    gen_time_formatted = format_long_datetime()
+    
     # 1. Executive Top Header
     header_data = [
         [
             Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#064E3B'>{ar_name}</font><br/><font size=7 color='#64748B'>CR: {cr_num} • {address}</font>", st['company_meta']),
-            Paragraph("<b>ACCOUNTS PAYABLE REPORT</b><br/><font size=7.5 color='#D97706'><b>جدول التزامات الموردين والمستحقات</b></font><br/><font size=7 color='#64748B'>Generated: " + datetime.now().strftime("%Y-%m-%d %H:%M") + "</font>", st['doc_title'])
+            Paragraph(f"<b>ACCOUNTS PAYABLE REPORT</b><br/><font size=7.5 color='#D97706'><b>جدول التزامات الموردين والمستحقات</b></font><br/><font size=7 color='#64748B'>Generated: {gen_time_formatted}</font>", st['doc_title'])
         ]
     ]
     header_table = Table(header_data, colWidths=[4.3*inch, 3.4*inch])
@@ -630,20 +687,20 @@ def generate_supplier_summary_report_pdf(
     elements.append(Spacer(1, 3))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_PRIMARY_DARK, spaceAfter=6))
     
-    # 2. Scope & Filter Parameters Box
+    # 2. Scope & Filter Parameters Box (Calendar Formatted Dates)
     f_info = filter_info or {}
     sel_sups = f_info.get("selected_suppliers", "All Registered Suppliers")
     st_filter = f_info.get("status", "All Statuses")
-    date_scope = f_info.get("date_range", "All Historical Invoices")
+    raw_date_scope = f_info.get("date_range", "All Historical Invoices")
     
     meta_data = [
         [
             Paragraph("<b>Target Suppliers:</b>", st['cell_bold']), Paragraph(str(sel_sups), st['cell_text']),
-            Paragraph("<b>Generated On:</b>", st['cell_bold']), Paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"), st['cell_text'])
+            Paragraph("<b>Generated On:</b>", st['cell_bold']), Paragraph(gen_time_formatted, st['cell_text'])
         ],
         [
             Paragraph("<b>Payment Status Scope:</b>", st['cell_bold']), Paragraph(str(st_filter), st['cell_text']),
-            Paragraph("<b>Invoice Date Filter:</b>", st['cell_bold']), Paragraph(str(date_scope), st['cell_text'])
+            Paragraph("<b>Invoice Date Filter:</b>", st['cell_bold']), Paragraph(str(raw_date_scope), st['cell_text'])
         ]
     ]
     meta_table = Table(meta_data, colWidths=[1.3*inch, 3.1*inch, 1.1*inch, 2.2*inch])
@@ -663,7 +720,6 @@ def generate_supplier_summary_report_pdf(
     tot_billed = float(summary_stats.get("total_billed", sum(float(i.get("amount", 0)) for i in invoices)))
     tot_paid = float(summary_stats.get("total_paid", sum(float(i.get("paid_amount", 0)) for i in invoices)))
     tot_rem = float(summary_stats.get("total_outstanding_payable", sum(float(i.get("remaining_amount", 0)) for i in invoices)))
-    tot_over = float(summary_stats.get("total_overdue_payable", 0.0))
     
     kpi_data = [
         [
@@ -694,7 +750,7 @@ def generate_supplier_summary_report_pdf(
     elements.append(kpi_table)
     elements.append(Spacer(1, 8))
     
-    # 4. Grouped Supplier Tables
+    # 4. Grouped Supplier Tables with Calendar Long Dates
     grouped = {}
     for inv in invoices:
         c_name = inv.get("company_name", "Other Vendors")
@@ -726,7 +782,7 @@ def generate_supplier_summary_report_pdf(
         elements.append(v_header_table)
         elements.append(Spacer(1, 1))
         
-        # Invoice Rows
+        # Invoice Rows with Calendar Dates
         rows = [
             [
                 Paragraph("Invoice #", st['cell_white']),
@@ -741,9 +797,12 @@ def generate_supplier_summary_report_pdf(
         ]
         
         for idx, inv in enumerate(v_invoices):
-            start_d = inv.get("supply_start_date") or inv.get("supply_date", "")
-            end_d = inv.get("supply_end_date") or inv.get("supply_date", "")
-            period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
+            period_formatted = format_date_range(
+                inv.get("supply_start_date") or inv.get("supply_date"),
+                inv.get("supply_end_date") or inv.get("supply_date")
+            )
+            inv_d_formatted = format_long_date(inv.get("invoice_date"))
+            due_d_formatted = format_long_date(inv.get("due_date"))
             
             amt = float(inv.get("amount", 0.0))
             pd = float(inv.get("paid_amount", 0.0))
@@ -752,16 +811,16 @@ def generate_supplier_summary_report_pdf(
             
             rows.append([
                 Paragraph(str(inv.get('invoice_number', 'N/A')), st['cell_text']),
-                Paragraph(str(inv.get('invoice_date', '')), st['cell_text']),
-                Paragraph(period, st['cell_text']),
-                Paragraph(str(inv.get('due_date', '')), st['cell_text']),
+                Paragraph(inv_d_formatted, st['cell_text']),
+                Paragraph(period_formatted, st['cell_text']),
+                Paragraph(due_d_formatted, st['cell_text']),
                 Paragraph(f"{amt:,.2f}", st['cell_right']),
                 Paragraph(f"{pd:,.2f}", st['cell_right']),
                 Paragraph(f"<b>{rem:,.2f}</b>", ParagraphStyle('RedCell', parent=st['cell_right_bold'], textColor=COLOR_DANGER if rem > 0 else COLOR_TEXT_MAIN)),
                 Paragraph(format_status_pill(st_text), st['cell_text'])
             ])
             
-        t = Table(rows, colWidths=[1.1*inch, 0.8*inch, 1.6*inch, 0.8*inch, 0.85*inch, 0.85*inch, 0.9*inch, 0.85*inch])
+        t = Table(rows, colWidths=[1.1*inch, 0.9*inch, 1.5*inch, 0.9*inch, 0.85*inch, 0.85*inch, 0.85*inch, 0.75*inch])
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_DARK),
             ('BOX', (0,0), (-1,-1), 0.5, COLOR_NEUTRAL_BORDER),

@@ -1524,7 +1524,10 @@ async function loadSupplierPayments() {
 
       const startD = sp.supply_start_date || sp.supply_date || '';
       const endD = sp.supply_end_date || sp.supply_date || '';
-      const supplyPeriod = (startD && endD && startD !== endD) ? `${startD} <span style="color:var(--text-muted);">to</span> ${endD}` : (startD || 'N/A');
+      const formattedStart = formatCalendarDate(startD);
+      const formattedEnd = formatCalendarDate(endD);
+      const supplyPeriod = (startD && endD && startD !== endD) ? `${formattedStart} <span style="color:var(--text-muted);">to</span> ${formattedEnd}` : (formattedStart || 'N/A');
+      const formattedDue = formatCalendarDate(sp.due_date);
 
       return `
         <tr>
@@ -1543,7 +1546,7 @@ async function loadSupplierPayments() {
             ` : ''}
           </td>
           <td style="font-size: 0.82rem;">${supplyPeriod}</td>
-          <td>${sp.due_date}</td>
+          <td>${formattedDue}</td>
           <td>SAR ${tot.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
           <td><span style="color: var(--primary); font-weight: 600;">SAR ${pd.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></td>
           <td><strong style="color: ${rem > 0 ? 'var(--danger)' : 'var(--success)'};">SAR ${rem.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
@@ -1793,6 +1796,22 @@ async function deleteSupplierAttachment(spId) {
   }
 }
 
+function formatCalendarDate(dateStr) {
+  if (!dateStr || dateStr === 'N/A' || dateStr === '-') return '-';
+  const clean = String(dateStr).trim();
+  if (clean.includes('-') && clean.length >= 10) {
+    const parts = clean.slice(0, 10).split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day) && month >= 0 && month < 12) {
+      return `${String(day).padStart(2, '0')} ${months[month]} ${year}`;
+    }
+  }
+  return clean;
+}
+
 function addOneMonthToDate(dateStr) {
   if (!dateStr || !dateStr.includes('-')) return new Date().toISOString().split('T')[0];
   const parts = dateStr.split('-');
@@ -1986,8 +2005,8 @@ async function openVendorLedgerModal(companyName) {
             <br/><button class="btn btn-outline" style="margin-top: 3px; padding: 1px 6px; font-size: 0.7rem; border-color: #2563EB; color: #2563EB;" onclick="openSupplierAttachment(${i.id})" title="View attached document">📎 PDF</button>
           ` : ''}
         </td>
-        <td>${i.invoice_date}</td>
-        <td>${i.due_date}</td>
+        <td>${formatCalendarDate(i.invoice_date)}</td>
+        <td>${formatCalendarDate(i.due_date)}</td>
         <td>${i.invoice_details || 'N/A'}</td>
         <td>SAR ${i.amount.toLocaleString()}</td>
         <td>SAR ${i.paid_amount.toLocaleString()}</td>
@@ -2003,7 +2022,7 @@ async function openVendorLedgerModal(companyName) {
     } else {
       logsBody.innerHTML = data.payment_logs.map(l => `
         <tr>
-          <td>${l.payment_date}</td>
+          <td>${formatCalendarDate(l.payment_date)}</td>
           <td>${l.payment_method}</td>
           <td><code>${l.reference_number || 'N/A'}</code></td>
           <td><strong style="color: var(--primary);">SAR ${l.payment_amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
