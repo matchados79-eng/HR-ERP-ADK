@@ -1930,12 +1930,12 @@
     </div>
   </div>
 
-  <!-- MODAL: ADJUST WORKER MONTHLY PAY -->
+  <!-- MODAL: ADJUST WORKER MONTHLY PAY (EXACT INDUSTRIAL VOUCHER BREAKDOWN) -->
   <div id="modal-adjust-worker-pay" class="modal-overlay">
-    <div class="modal-box" style="max-width: 600px;">
+    <div class="modal-box" style="max-width: 780px;">
       <div class="modal-header">
         <div>
-          <h3 class="modal-title" id="adjust-worker-title">✏️ Adjust Monthly Worker Pay</h3>
+          <h3 class="modal-title" id="adjust-worker-title">✏️ Adjust Industrial Worker Payslip Breakdown</h3>
           <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;" id="adjust-worker-period-subtitle">
             Month of August 2026
           </p>
@@ -1947,68 +1947,157 @@
         <input type="hidden" id="adjust-employee-id">
         <input type="hidden" id="adjust-is-saudi">
 
-        <div class="modal-body">
+        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
           <!-- Worker Info Banner -->
           <div style="background: #EFF6FF; border: 1px solid #BFDBFE; padding: 12px; border-radius: 8px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <div style="font-weight: 800; font-size: 1rem; color: #0047AB;" id="adjust-worker-name-banner">Ahmed Al-Mansoor</div>
-              <div style="font-size: 0.78rem; color: #64748B;" id="adjust-worker-dept-banner">Operations • Senior Structural Engineer</div>
+              <div style="font-weight: 800; font-size: 1rem; color: #0047AB;" id="adjust-worker-name-banner">Rommel Cornejo</div>
+              <div style="font-size: 0.78rem; color: #64748B;" id="adjust-worker-dept-banner">Operations • Electrician Foreman</div>
             </div>
-            <span class="badge badge-saudi" id="adjust-worker-nat-badge">SAUDI NATIONAL</span>
+            <span class="badge badge-expat" id="adjust-worker-nat-badge">EXPATRIATE</span>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <!-- Cutoff Period & Days Worked -->
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div class="form-group">
-              <label style="font-weight: 700;">Basic Salary (SAR) *</label>
-              <input type="number" step="0.01" id="adjust-basic-salary" class="form-control" required oninput="recalcAdjustWorkerPayLive()">
+              <label style="font-weight: 700;">Cutoff Period</label>
+              <input type="text" id="adjust-cutoff-period" class="form-control" placeholder="e.g. July 01-31, 2026">
             </div>
             <div class="form-group">
-              <label style="font-weight: 700;">Housing Allowance (SAR)</label>
-              <input type="number" step="0.01" id="adjust-housing-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="form-group">
-              <label>Transport Allowance (SAR)</label>
-              <input type="number" step="0.01" id="adjust-transport-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
-            </div>
-            <div class="form-group">
-              <label>Overtime, Bonus & Other (SAR)</label>
-              <input type="number" step="0.01" id="adjust-other-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+              <label style="font-weight: 700;">Days Worked</label>
+              <input type="number" step="0.01" id="adjust-days-worked" class="form-control" value="10.00" oninput="recalcAdjustWorkerPayLive()">
             </div>
           </div>
 
-          <div class="form-group">
-            <label>Other Deductions / Penalties / Absences (SAR)</label>
-            <input type="number" step="0.01" id="adjust-other-deductions" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-bottom: 8px;">1. Rates & Regular Working Hours</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Daily Rate (SAR)</label>
+                <input type="number" step="0.00000001" id="adjust-daily-rate" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Hourly Rate (SAR)</label>
+                <input type="number" step="0.01" id="adjust-hourly-rate" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Total Working Hours</label>
+                <input type="number" step="0.01" id="adjust-working-hours" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Regular Pay (SAR)</label>
+                <input type="number" step="0.01" id="adjust-regular-pay" class="form-control" readonly style="background: #F1F5F9; font-weight: 700;">
+              </div>
+            </div>
           </div>
 
-          <!-- Live Computation Strip -->
-          <div style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 14px; margin-top: 10px;">
+          <!-- Overtime & Rest Day / Holiday Section -->
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-bottom: 8px;">2. Overtime, Rest Days & Holidays</div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">O.T Rate (SAR)</label>
+                <input type="number" step="0.01" id="adjust-ot-rate" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">O.T Hours</label>
+                <input type="number" step="0.01" id="adjust-ot-hours" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">O.T Pay (SAR)</label>
+                <input type="number" step="0.01" id="adjust-ot-pay" class="form-control" readonly style="background: #F1F5F9; font-weight: 700;">
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Friday / Rest Day Hours</label>
+                <input type="number" step="0.01" id="adjust-rest-day-hours" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Holiday Hours</label>
+                <input type="number" step="0.01" id="adjust-holiday-hours" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Meal Allowance Rate (SAR)</label>
+                <input type="number" step="0.01" id="adjust-meal-rate" class="form-control" value="10.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Meal Allowance Days/Qty</label>
+                <input type="number" step="0.01" id="adjust-meal-qty" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Meal Allowance Pay (SAR)</label>
+                <input type="number" step="0.01" id="adjust-meal-pay" class="form-control" readonly style="background: #F1F5F9; font-weight: 700;">
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 8px;">
+              <label style="font-size: 0.75rem;">Addition / Bonus Adjustment (SAR)</label>
+              <input type="number" step="0.01" id="adjust-other-allowance" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+            </div>
+          </div>
+
+          <!-- Deductions & Advances Section -->
+          <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 0.85rem; font-weight: 800; color: #991B1B; margin-bottom: 8px;">3. Deductions, Utilities & Cash Advances</div>
+            
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">WPS Fee (SAR)</label>
+                <input type="number" step="0.01" id="adjust-wps-deduction" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Water Bill / Utility (SAR)</label>
+                <input type="number" step="0.01" id="adjust-water-bill" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Other Deductions (SAR)</label>
+                <input type="number" step="0.01" id="adjust-other-deductions" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label style="font-size: 0.75rem; font-weight: 700; color: #991B1B;">Cash Advance (SAR)</label>
+                <input type="number" step="0.01" id="adjust-cash-advance" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Subtraction Adjustment (SAR)</label>
+                <input type="number" step="0.01" id="adjust-sub-deduction" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Computation Ribbon matching Payslip Colors -->
+          <div style="background: #0A1128; color: #FFFFFF; border-radius: 8px; padding: 14px; margin-top: 10px;">
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
               <div>
-                <div style="font-size: 0.68rem; color: #64748B; font-weight: 700;">GROSS PAYABLE</div>
-                <div style="font-size: 1rem; font-weight: 800; color: #0047AB;" id="adjust-live-gross">SAR 0.00</div>
+                <div style="font-size: 0.68rem; color: #94A3B8; font-weight: 700;">TOTAL PAY (GROSS)</div>
+                <div style="font-size: 1.05rem; font-weight: 800; color: #60A5FA;" id="adjust-live-gross">SAR 0.00</div>
               </div>
               <div>
-                <div style="font-size: 0.68rem; color: #991B1B; font-weight: 700;">GOSI (STATUTORY)</div>
-                <div style="font-size: 1rem; font-weight: 800; color: #DC2626;" id="adjust-live-gosi">SAR 0.00</div>
+                <div style="font-size: 0.68rem; color: #FCA5A5; font-weight: 700;">TOTAL DEDUCTIONS</div>
+                <div style="font-size: 1.05rem; font-weight: 800; color: #F87171;" id="adjust-live-ded">SAR 0.00</div>
               </div>
               <div>
-                <div style="font-size: 0.68rem; color: #64748B; font-weight: 700;">OTHER DED.</div>
-                <div style="font-size: 1rem; font-weight: 800; color: #64748B;" id="adjust-live-ded">SAR 0.00</div>
+                <div style="font-size: 0.68rem; color: #93C5FD; font-weight: 700;">NET PAY</div>
+                <div style="font-size: 1.1rem; font-weight: 900; color: #C7D2FE;" id="adjust-live-net">SAR 0.00</div>
               </div>
-              <div>
-                <div style="font-size: 0.68rem; color: #065F46; font-weight: 700;">NET DISBURSABLE</div>
-                <div style="font-size: 1.1rem; font-weight: 900; color: #059669;" id="adjust-live-net">SAR 0.00</div>
+              <div style="background: #FEF08A; padding: 6px; border-radius: 6px;">
+                <div style="font-size: 0.68rem; color: #854D0E; font-weight: 900;">ACTUAL PAY</div>
+                <div style="font-size: 1.15rem; font-weight: 900; color: #000000;" id="adjust-live-actual">SAR 0.00</div>
               </div>
             </div>
           </div>
 
           <div class="form-group" style="margin-top: 12px;">
             <label>Adjustment Remarks / Justification</label>
-            <input type="text" id="adjust-remarks" class="form-control" placeholder="e.g. Approved 15 hours overtime + project completion bonus">
+            <input type="text" id="adjust-remarks" class="form-control" placeholder="e.g. Approved site overtime, meal allowance & cash advance deduction">
           </div>
         </div>
 

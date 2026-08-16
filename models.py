@@ -157,6 +157,35 @@ class WorkerMonthlyPayRequest(BaseModel):
     other_deductions: Optional[float] = 0.0
     remarks: Optional[str] = None
 
+    # Industrial Payslip Breakdown Fields
+    cutoff_period: Optional[str] = None
+    days_worked: Optional[float] = 30.0
+    daily_rate: Optional[float] = None
+    hourly_rate: Optional[float] = None
+    ot_rate: Optional[float] = None
+    working_hours: Optional[float] = None
+    regular_pay: Optional[float] = None
+    ot_hours: Optional[float] = 0.0
+    ot_pay: Optional[float] = 0.0
+    subtotal_pay: Optional[float] = None
+    rest_day_hours: Optional[float] = 0.0
+    rest_day_rate: Optional[float] = None
+    rest_day_pay: Optional[float] = 0.0
+    holiday_hours: Optional[float] = 0.0
+    holiday_rate: Optional[float] = None
+    holiday_pay: Optional[float] = 0.0
+    meal_allowance_qty: Optional[float] = 0.0
+    meal_allowance_rate: Optional[float] = 0.0
+    meal_allowance_pay: Optional[float] = 0.0
+    adjustment_add: Optional[float] = 0.0
+    total_pay: Optional[float] = None
+    wps_deduction: Optional[float] = 0.0
+    water_bill: Optional[float] = 0.0
+    total_deductions: Optional[float] = None
+    cash_advance: Optional[float] = 0.0
+    adjustment_sub: Optional[float] = 0.0
+    actual_pay: Optional[float] = None
+
 class BackupRestoreRequest(BaseModel):
     backup_json: Optional[str] = None
 

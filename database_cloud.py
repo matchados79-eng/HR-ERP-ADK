@@ -278,13 +278,43 @@ def init_db():
         pass
 
     try:
-        cursor.execute("ALTER TABLE supplier_payments ADD COLUMN attachment_filename TEXT;")
-    except Exception:
-        pass
-    try:
         cursor.execute("ALTER TABLE supplier_payments ADD COLUMN attachment_path TEXT;")
     except Exception:
         pass
+
+    # Industrial Payslip Itemized Breakdown Columns
+    payslip_cols = [
+        ("cutoff_period", "TEXT"),
+        ("days_worked", "REAL DEFAULT 0.0"),
+        ("daily_rate", "REAL DEFAULT 0.0"),
+        ("hourly_rate", "REAL DEFAULT 0.0"),
+        ("ot_rate", "REAL DEFAULT 0.0"),
+        ("working_hours", "REAL DEFAULT 0.0"),
+        ("regular_pay", "REAL DEFAULT 0.0"),
+        ("ot_hours", "REAL DEFAULT 0.0"),
+        ("ot_pay", "REAL DEFAULT 0.0"),
+        ("subtotal_pay", "REAL DEFAULT 0.0"),
+        ("rest_day_hours", "REAL DEFAULT 0.0"),
+        ("rest_day_pay", "REAL DEFAULT 0.0"),
+        ("holiday_hours", "REAL DEFAULT 0.0"),
+        ("holiday_pay", "REAL DEFAULT 0.0"),
+        ("meal_allowance_qty", "REAL DEFAULT 0.0"),
+        ("meal_allowance_rate", "REAL DEFAULT 0.0"),
+        ("meal_allowance_pay", "REAL DEFAULT 0.0"),
+        ("adjustment_add", "REAL DEFAULT 0.0"),
+        ("total_pay", "REAL DEFAULT 0.0"),
+        ("wps_deduction", "REAL DEFAULT 0.0"),
+        ("water_bill", "REAL DEFAULT 0.0"),
+        ("total_deductions", "REAL DEFAULT 0.0"),
+        ("cash_advance", "REAL DEFAULT 0.0"),
+        ("adjustment_sub", "REAL DEFAULT 0.0"),
+        ("actual_pay", "REAL DEFAULT 0.0")
+    ]
+    for col_name, col_type in payslip_cols:
+        try:
+            cursor.execute(f"ALTER TABLE payroll_details ADD COLUMN {col_name} {col_type};")
+        except Exception:
+            pass
 
     # Auto-populate suppliers directory from existing payments if not already present
     try:

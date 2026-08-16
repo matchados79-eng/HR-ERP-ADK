@@ -719,205 +719,313 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
 
 
 # =========================================================================
-# 3. EXECUTIVE BILINGUAL SALARY PAYSLIP VOUCHER
+# 3. EXECUTIVE INDUSTRIAL WORKER PAYSLIP VOUCHER (ADK EXACT TEMPLATE)
 # =========================================================================
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
-    """Generates an executive Bilingual Saudi Standard Salary Voucher PDF using Playwright."""
+    """
+    Generates the exact ADK Industrial Worker Payslip Voucher PDF matching the company's
+    standard rate breakdown, regular/OT hours, rest day/holiday pay, meal allowances,
+    WPS/utility deductions, cash advances, and Actual Pay highlights.
+    """
     company_name = company_info.get("company_name", "ADK Co., LTD.")
     ar_name = company_info.get("company_arabic_name", "شركة إيه دي كيه للخدمات الصناعية المحدودة")
     cr_num = company_info.get("cr_number", "2055001234")
-    gosi_reg = company_info.get("gosi_reg_number", "309481920")
     address = company_info.get("address", "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia")
     
     pay_period_str = format_pay_period(payroll_detail.get('month', ''), payroll_detail.get('year', ''))
+    cutoff_str = payroll_detail.get("cutoff_period") or f"{pay_period_str}"
     
-    basic = float(payroll_detail.get("basic_salary", 0.0))
-    housing = float(payroll_detail.get("housing_allowance", 0.0))
-    transport = float(payroll_detail.get("transport_allowance", 0.0))
-    other_allow = float(payroll_detail.get("other_allowances", 0.0))
-    gross = float(payroll_detail.get("gross_salary", basic + housing + transport + other_allow))
+    emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip().upper()
+    designation = str(employee_data.get("designation") or "TECHNICIAN / OPERATOR").upper()
     
-    gosi_emp = float(payroll_detail.get("gosi_employee", 0.0))
-    other_ded = float(payroll_detail.get("other_deductions", 0.0))
-    total_ded = gosi_emp + other_ded
-    net_pay = float(payroll_detail.get("net_salary", gross - total_ded))
-    gosi_empr = float(payroll_detail.get("gosi_employer", 0.0))
+    # Days & Rates calculation
+    days_worked = float(payroll_detail.get("days_worked") or 30.0)
+    basic = float(payroll_detail.get("basic_salary") or 0.0)
     
-    emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
-    is_saudi = employee_data.get("is_saudi") == 1
-    nat_type = "Saudi National (مواطن)" if is_saudi else "Expat / Non-Saudi (مقيم)"
+    daily_rate = float(payroll_detail.get("daily_rate") or (basic / 30.0 if basic > 0 else 83.33333333))
+    hourly_rate = float(payroll_detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42))
+    ot_rate = float(payroll_detail.get("ot_rate") or round(hourly_rate * 1.5, 2))
     
+    # Hours & Base Earnings
+    working_hours = float(payroll_detail.get("working_hours") if payroll_detail.get("working_hours") is not None else (days_worked * 8.0 if days_worked > 0 else 64.0))
+    regular_pay = float(payroll_detail.get("regular_pay") if payroll_detail.get("regular_pay") is not None else round(working_hours * hourly_rate, 2))
+    
+    ot_hours = float(payroll_detail.get("ot_hours") or 0.0)
+    ot_pay = float(payroll_detail.get("ot_pay") or round(ot_hours * ot_rate, 2))
+    
+    subtotal_hours = working_hours + ot_hours
+    subtotal_pay = float(payroll_detail.get("subtotal_pay") or round(regular_pay + ot_pay, 2))
+    
+    # Rest Day, Holiday, Meal Allowance, Adjustments
+    rest_day_hours = float(payroll_detail.get("rest_day_hours") or 0.0)
+    rest_day_rate = float(payroll_detail.get("rest_day_rate") or hourly_rate)
+    rest_day_pay = float(payroll_detail.get("rest_day_pay") or round(rest_day_hours * rest_day_rate, 2))
+    
+    holiday_hours = float(payroll_detail.get("holiday_hours") or 0.0)
+    holiday_rate = float(payroll_detail.get("holiday_rate") or hourly_rate)
+    holiday_pay = float(payroll_detail.get("holiday_pay") or round(holiday_hours * holiday_rate, 2))
+    
+    meal_allowance_qty = float(payroll_detail.get("meal_allowance_qty") or 0.0)
+    meal_allowance_rate = float(payroll_detail.get("meal_allowance_rate") or (10.0 if meal_allowance_qty > 0 else 0.0))
+    meal_allowance_pay = float(payroll_detail.get("meal_allowance_pay") or float(payroll_detail.get("housing_allowance") or 0.0) or round(meal_allowance_qty * meal_allowance_rate, 2))
+    
+    adjustment_add = float(payroll_detail.get("adjustment_add") or float(payroll_detail.get("other_allowances") or 0.0))
+    
+    total_pay = float(payroll_detail.get("total_pay") or float(payroll_detail.get("gross_salary") or 0.0) or round(subtotal_pay + rest_day_pay + holiday_pay + meal_allowance_pay + adjustment_add, 2))
+    
+    # Deductions
+    wps_deduction = float(payroll_detail.get("wps_deduction") or 0.0)
+    water_bill = float(payroll_detail.get("water_bill") or 0.0)
+    gosi_emp = float(payroll_detail.get("gosi_employee") or 0.0)
+    other_ded = float(payroll_detail.get("other_deductions") or 0.0)
+    
+    total_deductions = float(payroll_detail.get("total_deductions") or round(wps_deduction + water_bill + gosi_emp + other_ded, 2))
+    net_pay = float(payroll_detail.get("net_salary") or float(payroll_detail.get("net_pay") or 0.0) or round(total_pay - total_deductions, 2))
+    
+    # Cash Advance & Actual Pay
+    cash_advance = float(payroll_detail.get("cash_advance") or 0.0)
+    adjustment_sub = float(payroll_detail.get("adjustment_sub") or 0.0)
+    actual_pay = float(payroll_detail.get("actual_pay") or round(net_pay - cash_advance - adjustment_sub, 2))
+    
+    gen_time = format_long_datetime()
+    
+    def fmt_num(val, show_zero_as_dash=False, decimals=2):
+        if val is None:
+            return "-"
+        try:
+            v = float(val)
+            if v == 0.0 and show_zero_as_dash:
+                return "-"
+            if decimals == 8:
+                return f"{v:.8f}".rstrip('0').rstrip('.') if '.' in f"{v:.8f}" else f"{v:.2f}"
+            return f"{v:,.2f}"
+        except Exception:
+            return str(val)
+
     html = f"""<!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>Salary Payslip Voucher</title>
+      <title>Payslip Voucher - {emp_name}</title>
       <style>
-        @page {{ size: letter; margin: 0; }}
+        @page {{ size: letter portrait; margin: 0; }}
         * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }}
-        body {{ background-color: #FFFFFF; color: #0F172A; padding: 16px 20px; font-size: 8pt; line-height: 1.35; }}
-        .header-banner {{
-          background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-          color: #FFFFFF; padding: 12px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #B45309;
+        body {{ background-color: #FFFFFF; color: #000000; padding: 24px 28px; font-size: 8.5pt; line-height: 1.3; }}
+        
+        .company-header {{
+          display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #0A1128; padding-bottom: 6px;
         }}
-        .header-left .comp-title {{ font-size: 13pt; font-weight: 800; }}
-        .header-left .comp-ar {{ font-size: 8.5pt; color: #94A3B8; margin-top: 1px; }}
-        .header-left .comp-meta {{ font-size: 7pt; color: #64748B; margin-top: 2px; }}
-        .header-right {{ text-align: right; }}
-        .header-right .doc-badge {{ font-size: 12pt; font-weight: 800; color: #FEF3C7; }}
-        .header-right .doc-ar {{ font-size: 8pt; color: #FDE68A; }}
-        .header-right .doc-meta {{ font-size: 7pt; color: #94A3B8; margin-top: 2px; }}
+        .company-title {{ font-size: 13pt; font-weight: 900; color: #0A1128; }}
+        .company-sub {{ font-size: 7.5pt; color: #475569; }}
+        .doc-title-badge {{ font-size: 11pt; font-weight: 800; color: #0047AB; text-align: right; }}
+        .doc-title-sub {{ font-size: 7.5pt; color: #64748B; text-align: right; }}
         
-        .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }}
-        .kpi-card {{ padding: 8px 10px; border-radius: 6px; border: 1px solid #CBD5E1; text-align: center; }}
-        .kpi-card.blue {{ background: #EFF6FF; border-color: #BFDBFE; }}
-        .kpi-card.green {{ background: #ECFDF5; border-color: #A7F3D0; }}
-        .kpi-card.red {{ background: #FEF2F2; border-color: #FECACA; }}
-        .kpi-card.neutral {{ background: #F8FAFC; border-color: #E2E8F0; }}
-        .kpi-label {{ font-size: 6.5pt; font-weight: 700; color: #64748B; text-transform: uppercase; }}
-        .kpi-val {{ font-size: 11.5pt; font-weight: 800; color: #0F172A; margin: 2px 0; }}
-        .kpi-sub {{ font-size: 6.5pt; font-weight: 700; }}
-        
-        .meta-card {{
-          background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;
-          display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; font-size: 7.5pt;
+        /* Master Payslip Grid matching template image */
+        .payslip-table {{
+          width: 100%; border-collapse: collapse; border: 2.5px solid #000000; font-size: 8.5pt;
         }}
-        .meta-item strong {{ color: #0F172A; }}
+        .payslip-table th, .payslip-table td {{
+          border: 1.5px solid #000000; padding: 5px 8px; vertical-align: middle;
+        }}
         
-        .section-title {{ font-size: 9pt; font-weight: 800; color: #0F172A; margin-bottom: 5px; }}
-        .data-table {{ width: 100%; border-collapse: collapse; font-size: 7.2pt; border: 1px solid #CBD5E1; margin-bottom: 8px; }}
-        .data-table th {{ background: #0F172A; color: #FFFFFF; font-weight: 700; padding: 5px 8px; text-align: left; }}
-        .data-table td {{ padding: 4px 8px; border-bottom: 1px solid #E2E8F0; }}
-        .data-table tbody tr:nth-child(even) {{ background-color: #F8FAFC; }}
-        .data-table tfoot td {{ background-color: #E2E8F0; font-weight: 700; color: #0F172A; }}
+        .worker-name-box {{
+          font-size: 11.5pt; font-weight: 900; text-align: center; color: #000000; letter-spacing: 0.5px;
+        }}
+        .hdr-label {{
+          font-weight: 900; font-size: 8.5pt; width: 140px; text-align: right; padding-right: 10px;
+        }}
+        .hdr-val {{
+          font-weight: 800; font-size: 8.5pt; text-align: center;
+        }}
+        .col-head-title {{
+          font-weight: 900; text-align: center; font-size: 8pt; line-height: 1.15;
+        }}
         
-        .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-        .font-green {{ color: #065F46; }}
-        .font-red {{ color: #991B1B; }}
-        .bold {{ font-weight: 700; }}
+        .bold {{ font-weight: 800; }}
+        .bolder {{ font-weight: 900; }}
+        .num {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }}
+        .text-center {{ text-align: center; }}
         
-        .sig-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }}
-        .sig-card {{ background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; text-align: center; }}
-        .sig-title {{ font-size: 7.2pt; font-weight: 700; color: #0F172A; margin-bottom: 2px; }}
-        .sig-dept {{ font-size: 6.8pt; color: #64748B; margin-bottom: 16px; }}
-        .sig-line {{ border-top: 1px solid #94A3B8; padding-top: 3px; font-size: 6.5pt; color: #64748B; }}
-        .footer-note {{ text-align: center; font-size: 6.5pt; color: #94A3B8; margin-top: 8px; }}
+        /* Highlights matching user template */
+        .row-subtotal td {{ background-color: #FFFFFF; font-weight: 900; }}
+        .row-total-pay td {{ background-color: #FFFFFF; font-weight: 900; font-size: 9pt; }}
+        
+        .row-net-pay td {{
+          background-color: #DDE5F4 !important; font-weight: 900; font-size: 9.5pt;
+        }}
+        .row-actual-pay td {{
+          background-color: #FFF066 !important; font-weight: 900; font-size: 10.5pt; border-top: 2px solid #000000;
+        }}
+        
+        .sig-block {{
+          display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 14px;
+        }}
+        .sig-box {{
+          border: 1px solid #000000; padding: 8px 12px; text-align: center; border-radius: 3px;
+        }}
+        .sig-title {{ font-size: 7.5pt; font-weight: 800; margin-bottom: 2px; }}
+        .sig-line {{ border-top: 1px solid #000000; margin-top: 22px; padding-top: 2px; font-size: 6.8pt; color: #475569; }}
+        .footer-stamp {{ text-align: center; font-size: 6.5pt; color: #64748B; margin-top: 10px; }}
       </style>
     </head>
     <body>
-      <div class="header-banner">
-        <div class="header-left">
-          <div class="comp-title">🏢 {company_name}</div>
-          <div class="comp-ar">{ar_name}</div>
-          <div class="comp-meta">CR: {cr_num} • GOSI: {gosi_reg} • {address}</div>
+      
+      <div class="company-header">
+        <div>
+          <div class="company-title">{company_name}</div>
+          <div class="company-sub">{ar_name} • CR: {cr_num} • Al Jubail, KSA</div>
         </div>
-        <div class="header-right">
-          <div class="doc-badge">SALARY PAYSLIP VOUCHER</div>
-          <div class="doc-ar">قسيمة الراتب الرسمية</div>
-          <div class="doc-meta">Period: {pay_period_str}</div>
+        <div>
+          <div class="doc-title-badge">INDIVIDUAL SALARY PAYSLIP</div>
+          <div class="doc-title-sub">Official SAMA WPS Labor Voucher • {pay_period_str}</div>
         </div>
       </div>
-      
-      <div class="kpi-grid">
-        <div class="kpi-card neutral">
-          <div class="kpi-label">BASIC CONTRACT SALARY</div>
-          <div class="kpi-val">SAR {basic:,.2f}</div>
-          <div class="kpi-sub" style="color: #1E40AF;">Base Pay</div>
-        </div>
-        <div class="kpi-card blue">
-          <div class="kpi-label">TOTAL GROSS EARNINGS</div>
-          <div class="kpi-val" style="color: #1E40AF;">SAR {gross:,.2f}</div>
-          <div class="kpi-sub" style="color: #1E40AF;">Salary + Allowances</div>
-        </div>
-        <div class="kpi-card red">
-          <div class="kpi-label">TOTAL DEDUCTIONS & GOSI</div>
-          <div class="kpi-val" style="color: #991B1B;">SAR {total_ded:,.2f}</div>
-          <div class="kpi-sub" style="color: #991B1B;">Statutory Withholding</div>
-        </div>
-        <div class="kpi-card green">
-          <div class="kpi-label">NET SALARY PAYABLE</div>
-          <div class="kpi-val" style="color: #065F46;">SAR {net_pay:,.2f}</div>
-          <div class="kpi-sub" style="color: #065F46;">● SAMA WPS Certified</div>
-        </div>
-      </div>
-      
-      <div class="meta-card">
-        <div class="meta-item"><strong>Employee Name:</strong> {emp_name}</div>
-        <div class="meta-item"><strong>Employee ID:</strong> {employee_data.get("emp_code", "N/A")}</div>
-        <div class="meta-item"><strong>National ID / Iqama:</strong> {employee_data.get("national_id_iqama", "N/A")}</div>
-        <div class="meta-item"><strong>Department:</strong> {employee_data.get("department_name", "General Operations")}</div>
-        <div class="meta-item"><strong>Job Designation:</strong> {employee_data.get("designation", "N/A")}</div>
-        <div class="meta-item"><strong>Nationality Type:</strong> {nat_type}</div>
-        <div class="meta-item"><strong>Bank & IBAN:</strong> {employee_data.get('bank_name', 'Bank')} • {employee_data.get('iban', 'N/A')}</div>
-        <div class="meta-item"><strong>GOSI Reg Number:</strong> {employee_data.get("gosi_number", "N/A")}</div>
-      </div>
-      
-      <div class="section-title">ITEMIZED SALARY & STATUTORY DEDUCTIONS BREAKDOWN</div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>EARNINGS CATEGORY</th>
-            <th class="num">AMOUNT (SAR)</th>
-            <th>DEDUCTIONS & STATUTORY GOSI</th>
-            <th class="num">AMOUNT (SAR)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Basic Salary (الراتب الأساسي)</td>
-            <td class="num">{basic:,.2f}</td>
-            <td>GOSI Employee Share ({'9.75%' if is_saudi else '0%'})</td>
-            <td class="num">{gosi_emp:,.2f}</td>
-          </tr>
-          <tr>
-            <td>Housing Allowance (بدل سكن)</td>
-            <td class="num">{housing:,.2f}</td>
-            <td>Loan / Other Disciplinary Deductions</td>
-            <td class="num">{other_ded:,.2f}</td>
-          </tr>
-          <tr>
-            <td>Transportation Allowance (بدل نقل)</td>
-            <td class="num">{transport:,.2f}</td>
-            <td>-</td>
-            <td class="num">-</td>
-          </tr>
-          <tr>
-            <td>Other Allowances & Benefits</td>
-            <td class="num">{other_allow:,.2f}</td>
-            <td>-</td>
-            <td class="num">-</td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td><strong>Total Gross Earnings:</strong></td>
-            <td class="num font-green"><strong>SAR {gross:,.2f}</strong></td>
-            <td><strong>Total Deductions:</strong></td>
-            <td class="num font-red"><strong>SAR {total_ded:,.2f}</strong></td>
-          </tr>
-        </tfoot>
+
+      <table class="payslip-table">
+        <!-- TOP HEADER METADATA -->
+        <tr>
+          <td colspan="2" rowspan="3" style="width: 50%; vertical-align: middle; text-align: center; padding: 10px;">
+            <div class="worker-name-box">{emp_name}</div>
+          </td>
+          <td class="hdr-label">DESIGNATION:</td>
+          <td class="hdr-val">{designation}</td>
+        </tr>
+        <tr>
+          <td class="hdr-label">CUTOFF:</td>
+          <td class="hdr-val">{cutoff_str}</td>
+        </tr>
+        <tr>
+          <td class="hdr-label">DAYS:</td>
+          <td class="hdr-val">{days_worked:,.2f}</td>
+        </tr>
+
+        <!-- COLUMN HEADERS -->
+        <tr>
+          <td class="bold" style="width: 32%;">DAILY RATE</td>
+          <td class="num" style="width: 20%;">{fmt_num(daily_rate, decimals=8)}</td>
+          <td class="col-head-title" style="width: 24%;">TOTAL<br>WORKING<br>HOURS</td>
+          <td class="col-head-title" style="width: 24%;">HALF<br>MONTH<br>PAY</td>
+        </tr>
+
+        <!-- HOURLY RATE -->
+        <tr>
+          <td class="bold">HOURLY RATE</td>
+          <td class="num">{fmt_num(hourly_rate)}</td>
+          <td class="num">{fmt_num(working_hours)}</td>
+          <td class="num bold">{fmt_num(regular_pay)}</td>
+        </tr>
+
+        <!-- O.T -->
+        <tr>
+          <td class="bold">O.T</td>
+          <td class="num">{fmt_num(ot_rate)}</td>
+          <td class="num">{fmt_num(ot_hours, show_zero_as_dash=True)}</td>
+          <td class="num bold">{fmt_num(ot_pay, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- SUB TOTAL -->
+        <tr class="row-subtotal">
+          <td colspan="2" class="text-center bolder">SUB TOTAL</td>
+          <td class="num bolder">{fmt_num(subtotal_hours)}</td>
+          <td class="num bolder">{fmt_num(subtotal_pay)}</td>
+        </tr>
+
+        <!-- FRIDAY/REST DAY -->
+        <tr>
+          <td class="bold">FRIDAY/REST DAY</td>
+          <td class="num">{fmt_num(rest_day_rate)}</td>
+          <td class="num">{fmt_num(rest_day_hours, show_zero_as_dash=True)}</td>
+          <td class="num bold">{fmt_num(rest_day_pay, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- HOLIDAY -->
+        <tr>
+          <td class="bold">HOLIDAY</td>
+          <td class="num">{fmt_num(holiday_rate)}</td>
+          <td class="num">{fmt_num(holiday_hours, show_zero_as_dash=True)}</td>
+          <td class="num bold">{fmt_num(holiday_pay, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- MEAL ALLOWANCE -->
+        <tr>
+          <td class="bold">MEAL ALLOWANCE</td>
+          <td class="num">{fmt_num(meal_allowance_rate, show_zero_as_dash=True)}</td>
+          <td class="num">{fmt_num(meal_allowance_qty, show_zero_as_dash=True)}</td>
+          <td class="num bold">{fmt_num(meal_allowance_pay, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- ADJUSTMENT (ADDITION) -->
+        <tr>
+          <td class="bold">ADJUSTMENT</td>
+          <td class="num"></td>
+          <td class="num"></td>
+          <td class="num bold">{fmt_num(adjustment_add, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- TOTAL PAY (GROSS) -->
+        <tr class="row-total-pay">
+          <td colspan="3" class="text-center bolder">TOTAL PAY</td>
+          <td class="num bolder">{fmt_num(total_pay)}</td>
+        </tr>
+
+        <!-- DEDUCTIONS -->
+        <tr>
+          <td rowspan="2" class="bold text-center" style="vertical-align: middle;">DEDUCTION</td>
+          <td colspan="2" class="bold">WPS</td>
+          <td class="num bold">{fmt_num(wps_deduction, show_zero_as_dash=True)}</td>
+        </tr>
+        <tr>
+          <td colspan="2" class="bold">WATER BILL</td>
+          <td class="num bold">{fmt_num(water_bill, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- TOTAL DEDUCTION -->
+        <tr class="row-subtotal">
+          <td colspan="3" class="text-center bolder">TOTAL DEDUCTION</td>
+          <td class="num bolder">{fmt_num(total_deductions)}</td>
+        </tr>
+
+        <!-- NET PAY -->
+        <tr class="row-net-pay">
+          <td colspan="3" class="text-center bolder">NET PAY</td>
+          <td class="num bolder">{fmt_num(net_pay)}</td>
+        </tr>
+
+        <!-- CASH ADVANCE -->
+        <tr>
+          <td colspan="3" class="bold text-center">CASH ADVANCE</td>
+          <td class="num bold">{fmt_num(cash_advance, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- ADJUSTMENT (SUBTRACTION) -->
+        <tr>
+          <td colspan="3" class="bold text-center">ADJUSTMENT</td>
+          <td class="num bold">{fmt_num(adjustment_sub, show_zero_as_dash=True)}</td>
+        </tr>
+
+        <!-- ACTUAL PAY -->
+        <tr class="row-actual-pay">
+          <td colspan="3" class="text-center bolder">ACTUAL PAY</td>
+          <td class="num bolder">SAR {fmt_num(actual_pay)}</td>
+        </tr>
       </table>
-      
-      <div style="font-size: 7pt; color: #64748B; margin-bottom: 10px;">
-        * Employer Statutory GOSI Contribution for this period: <strong>SAR {gosi_empr:,.2f}</strong> ({'11.75%' if is_saudi else '2.0%'} per Saudi Social Insurance Law).
-      </div>
-      
-      <div class="sig-grid">
-        <div class="sig-card">
-          <div class="sig-title">AUTHORIZED HR & PAYROLL CONTROLLER</div>
-          <div class="sig-dept">HR & Payroll Operations Department</div>
-          <div class="sig-line">Signature & Corporate Stamp</div>
-        </div>
-        <div class="sig-card">
-          <div class="sig-title">EMPLOYEE ACKNOWLEDGMENT & RECEIPT</div>
-          <div class="sig-dept">I acknowledge receipt of full salary settlement.</div>
+
+      <!-- SIGNATURES BLOCK -->
+      <div class="sig-block">
+        <div class="sig-box">
+          <div class="sig-title">EMPLOYEE ACKNOWLEDGEMENT & RECEIPT</div>
           <div class="sig-line">Employee Signature & Date</div>
         </div>
+        <div class="sig-box">
+          <div class="sig-title">AUTHORIZED BY: PAYROLL & HR CONTROLLER</div>
+          <div class="sig-line">ADK Finance & HR Operations Stamp</div>
+        </div>
       </div>
-      
-      <div class="footer-note">
-        Page 1 of 1 | Strictly Confidential • Certified SAMA WPS Payroll Voucher under Saudi Labor Law
+
+      <div class="footer-stamp">
+        Certified Official Payslip Voucher under Saudi Labor Law & SAMA WPS • Generated on {gen_time}
       </div>
+
     </body>
     </html>
     """

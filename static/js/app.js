@@ -1020,21 +1020,46 @@ function openAdjustWorkerPayModal(detailId) {
   document.getElementById('adjust-employee-id').value = worker.employee_id;
   document.getElementById('adjust-is-saudi').value = worker.is_saudi;
 
-  document.getElementById('adjust-worker-title').innerText = `✏️ Adjust Pay: ${worker.first_name} ${worker.last_name}`;
+  document.getElementById('adjust-worker-title').innerText = `✏️ Adjust Payslip Breakdown: ${worker.first_name} ${worker.last_name}`;
   document.getElementById('adjust-worker-period-subtitle').innerText = `Month of ${MONTH_NAMES_MAP[month]} ${year} • Code: ${worker.emp_code}`;
   document.getElementById('adjust-worker-name-banner').innerText = `${worker.first_name} ${worker.last_name}`;
-  document.getElementById('adjust-worker-dept-banner').innerText = `${worker.department_name || 'Operations'} • ${worker.designation || 'Staff'}`;
+  document.getElementById('adjust-worker-dept-banner').innerText = `${worker.department_name || 'Operations'} • ${worker.designation || 'Electrician Foreman'}`;
   
   const natBadge = document.getElementById('adjust-worker-nat-badge');
   natBadge.className = `badge ${worker.is_saudi === 1 ? 'badge-saudi' : 'badge-expat'}`;
   natBadge.innerText = worker.is_saudi === 1 ? 'SAUDI NATIONAL' : 'EXPATRIATE';
 
-  document.getElementById('adjust-basic-salary').value = worker.basic_salary;
-  document.getElementById('adjust-housing-allowance').value = worker.housing_allowance || 0;
-  document.getElementById('adjust-transport-allowance').value = worker.transport_allowance || 0;
-  document.getElementById('adjust-other-allowance').value = worker.other_allowances || 0;
+  const basic = worker.basic_salary || 0;
+  const daysWorked = worker.days_worked !== undefined && worker.days_worked !== null ? worker.days_worked : 10.0;
+  const cutoff = worker.cutoff_period || `${MONTH_NAMES_MAP[month]} 01-31, ${year}`;
+  
+  const dailyRate = worker.daily_rate || (basic > 0 ? (basic / 30.0) : 83.33333333);
+  const hourlyRate = worker.hourly_rate || (dailyRate > 0 ? (dailyRate / 8.0) : 10.42);
+  const otRate = worker.ot_rate || Math.round(hourlyRate * 1.5 * 100) / 100;
+  const workingHours = worker.working_hours !== undefined && worker.working_hours !== null ? worker.working_hours : (daysWorked * 8.0);
+
+  document.getElementById('adjust-cutoff-period').value = cutoff;
+  document.getElementById('adjust-days-worked').value = daysWorked;
+  document.getElementById('adjust-daily-rate').value = dailyRate.toFixed(8);
+  document.getElementById('adjust-hourly-rate').value = hourlyRate.toFixed(2);
+  document.getElementById('adjust-working-hours').value = workingHours.toFixed(2);
+  
+  document.getElementById('adjust-ot-rate').value = otRate.toFixed(2);
+  document.getElementById('adjust-ot-hours').value = worker.ot_hours || 0;
+  document.getElementById('adjust-rest-day-hours').value = worker.rest_day_hours || 0;
+  document.getElementById('adjust-holiday-hours').value = worker.holiday_hours || 0;
+  
+  document.getElementById('adjust-meal-rate').value = worker.meal_allowance_rate !== undefined && worker.meal_allowance_rate !== null ? worker.meal_allowance_rate : 10.0;
+  document.getElementById('adjust-meal-qty').value = worker.meal_allowance_qty || 0;
+  document.getElementById('adjust-other-allowance').value = worker.adjustment_add || worker.other_allowances || 0;
+
+  document.getElementById('adjust-wps-deduction').value = worker.wps_deduction || 0;
+  document.getElementById('adjust-water-bill').value = worker.water_bill || 0;
   document.getElementById('adjust-other-deductions').value = worker.other_deductions || 0;
-  document.getElementById('adjust-remarks').value = '';
+  document.getElementById('adjust-cash-advance').value = worker.cash_advance || 0;
+  document.getElementById('adjust-sub-deduction').value = worker.adjustment_sub || 0;
+
+  document.getElementById('adjust-remarks').value = worker.remarks || '';
 
   recalcAdjustWorkerPayLive();
   openModal('modal-adjust-worker-pay');
@@ -1042,27 +1067,62 @@ function openAdjustWorkerPayModal(detailId) {
 
 function recalcAdjustWorkerPayLive() {
   const isSaudi = parseInt(document.getElementById('adjust-is-saudi').value) === 1;
-  const basic = parseFloat(document.getElementById('adjust-basic-salary').value || 0);
-  const housing = parseFloat(document.getElementById('adjust-housing-allowance').value || 0);
-  const transport = parseFloat(document.getElementById('adjust-transport-allowance').value || 0);
-  const other = parseFloat(document.getElementById('adjust-other-allowance').value || 0);
+  const daysWorked = parseFloat(document.getElementById('adjust-days-worked').value || 0);
+  
+  let dailyRate = parseFloat(document.getElementById('adjust-daily-rate').value || 0);
+  let hourlyRate = parseFloat(document.getElementById('adjust-hourly-rate').value || 0);
+  if (hourlyRate <= 0 && dailyRate > 0) {
+    hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    document.getElementById('adjust-hourly-rate').value = hourlyRate.toFixed(2);
+  }
+
+  const workingHours = parseFloat(document.getElementById('adjust-working-hours').value || (daysWorked * 8.0));
+  const regularPay = Math.round(workingHours * hourlyRate * 100) / 100;
+  document.getElementById('adjust-regular-pay').value = regularPay.toFixed(2);
+
+  const otRate = parseFloat(document.getElementById('adjust-ot-rate').value || (hourlyRate * 1.5));
+  const otHours = parseFloat(document.getElementById('adjust-ot-hours').value || 0);
+  const otPay = Math.round(otHours * otRate * 100) / 100;
+  document.getElementById('adjust-ot-pay').value = otPay.toFixed(2);
+
+  const subtotalPay = Math.round((regularPay + otPay) * 100) / 100;
+
+  const restDayHours = parseFloat(document.getElementById('adjust-rest-day-hours').value || 0);
+  const restDayPay = Math.round(restDayHours * hourlyRate * 100) / 100;
+
+  const holidayHours = parseFloat(document.getElementById('adjust-holiday-hours').value || 0);
+  const holidayPay = Math.round(holidayHours * hourlyRate * 100) / 100;
+
+  const mealRate = parseFloat(document.getElementById('adjust-meal-rate').value || 0);
+  const mealQty = parseFloat(document.getElementById('adjust-meal-qty').value || 0);
+  const mealPay = Math.round(mealRate * mealQty * 100) / 100;
+  document.getElementById('adjust-meal-pay').value = mealPay.toFixed(2);
+
+  const additionAdj = parseFloat(document.getElementById('adjust-other-allowance').value || 0);
+  const totalPay = Math.round((subtotalPay + restDayPay + holidayPay + mealPay + additionAdj) * 100) / 100;
+
+  // Deductions
+  const wpsDed = parseFloat(document.getElementById('adjust-wps-deduction').value || 0);
+  const waterBill = parseFloat(document.getElementById('adjust-water-bill').value || 0);
   const otherDed = parseFloat(document.getElementById('adjust-other-deductions').value || 0);
 
-  const gross = basic + housing + transport + other;
-  
-  // Saudi GOSI: 9.75% of (Basic + Housing), max eligible cap is 45,000 SAR
   let gosi = 0.0;
   if (isSaudi) {
-    const gosiBase = Math.min(basic + housing, 45000);
+    const gosiBase = Math.min(totalPay, 45000);
     gosi = Math.round(gosiBase * 0.0975 * 100) / 100;
   }
 
-  const net = Math.max(0, gross - gosi - otherDed);
+  const totalDeductions = Math.round((wpsDed + waterBill + otherDed + gosi) * 100) / 100;
+  const netPay = Math.max(0, Math.round((totalPay - totalDeductions) * 100) / 100);
 
-  document.getElementById('adjust-live-gross').innerText = `SAR ${gross.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-  document.getElementById('adjust-live-gosi').innerText = `SAR ${gosi.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-  document.getElementById('adjust-live-ded').innerText = `SAR ${otherDed.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-  document.getElementById('adjust-live-net').innerText = `SAR ${net.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  const cashAdvance = parseFloat(document.getElementById('adjust-cash-advance').value || 0);
+  const subAdj = parseFloat(document.getElementById('adjust-sub-deduction').value || 0);
+  const actualPay = Math.max(0, Math.round((netPay - cashAdvance - subAdj) * 100) / 100);
+
+  document.getElementById('adjust-live-gross').innerText = `SAR ${totalPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-ded').innerText = `SAR ${totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-net').innerText = `SAR ${netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-actual').innerText = `SAR ${actualPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
 }
 
 async function submitSaveWorkerMonthlyPay() {
@@ -1070,15 +1130,39 @@ async function submitSaveWorkerMonthlyPay() {
   const year = parseInt(document.getElementById('roster-select-year').value);
   const employee_id = parseInt(document.getElementById('adjust-employee-id').value);
 
+  const workingHours = parseFloat(document.getElementById('adjust-working-hours').value || 0);
+  const hourlyRate = parseFloat(document.getElementById('adjust-hourly-rate').value || 0);
+  const regularPay = parseFloat(document.getElementById('adjust-regular-pay').value || (workingHours * hourlyRate));
+
   const payload = {
     month: month,
     year: year,
     employee_id: employee_id,
-    basic_salary: parseFloat(document.getElementById('adjust-basic-salary').value || 0),
-    housing_allowance: parseFloat(document.getElementById('adjust-housing-allowance').value || 0),
-    transport_allowance: parseFloat(document.getElementById('adjust-transport-allowance').value || 0),
-    other_allowances: parseFloat(document.getElementById('adjust-other-allowance').value || 0),
+    basic_salary: regularPay > 0 ? regularPay : (parseFloat(document.getElementById('adjust-daily-rate').value || 0) * 30),
+    cutoff_period: document.getElementById('adjust-cutoff-period').value || null,
+    days_worked: parseFloat(document.getElementById('adjust-days-worked').value || 0),
+    daily_rate: parseFloat(document.getElementById('adjust-daily-rate').value || 0),
+    hourly_rate: hourlyRate,
+    ot_rate: parseFloat(document.getElementById('adjust-ot-rate').value || 0),
+    working_hours: workingHours,
+    regular_pay: regularPay,
+    ot_hours: parseFloat(document.getElementById('adjust-ot-hours').value || 0),
+    ot_pay: parseFloat(document.getElementById('adjust-ot-pay').value || 0),
+    rest_day_hours: parseFloat(document.getElementById('adjust-rest-day-hours').value || 0),
+    rest_day_rate: hourlyRate,
+    rest_day_pay: parseFloat(document.getElementById('adjust-rest-day-hours').value || 0) * hourlyRate,
+    holiday_hours: parseFloat(document.getElementById('adjust-holiday-hours').value || 0),
+    holiday_rate: hourlyRate,
+    holiday_pay: parseFloat(document.getElementById('adjust-holiday-hours').value || 0) * hourlyRate,
+    meal_allowance_qty: parseFloat(document.getElementById('adjust-meal-qty').value || 0),
+    meal_allowance_rate: parseFloat(document.getElementById('adjust-meal-rate').value || 0),
+    meal_allowance_pay: parseFloat(document.getElementById('adjust-meal-pay').value || 0),
+    adjustment_add: parseFloat(document.getElementById('adjust-other-allowance').value || 0),
+    wps_deduction: parseFloat(document.getElementById('adjust-wps-deduction').value || 0),
+    water_bill: parseFloat(document.getElementById('adjust-water-bill').value || 0),
     other_deductions: parseFloat(document.getElementById('adjust-other-deductions').value || 0),
+    cash_advance: parseFloat(document.getElementById('adjust-cash-advance').value || 0),
+    adjustment_sub: parseFloat(document.getElementById('adjust-sub-deduction').value || 0),
     remarks: document.getElementById('adjust-remarks').value || null
   };
 
@@ -1097,7 +1181,7 @@ async function submitSaveWorkerMonthlyPay() {
 
     closeModal('modal-adjust-worker-pay');
     await loadMonthlyPayrollRoster();
-    showToast('Worker monthly salary adjustments saved successfully!');
+    showToast('Worker industrial payslip breakdown saved successfully!');
 
   } catch (err) {
     showToast(`Error saving pay: ${err}`, 'error');

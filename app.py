@@ -1488,7 +1488,7 @@ def save_worker_monthly_pay(
     user: dict = Depends(require_roles(["admin", "hr_manager"]))
 ):
     """
-    Adds or updates an individual worker's salary, allowances, and deductions for a specific month.
+    Adds or updates an individual worker's full industrial payslip breakdown for a specific month.
     """
     emp = db.query_one("SELECT * FROM employees WHERE id = ?", (req.employee_id,))
     if not emp:
@@ -1504,16 +1504,54 @@ def save_worker_monthly_pay(
         run_id = run["id"]
         
     basic = max(0.0, float(req.basic_salary))
-    housing = max(0.0, float(req.housing_allowance or 0.0))
-    transport = max(0.0, float(req.transport_allowance or 0.0))
-    other_allow = max(0.0, float(req.other_allowances or 0.0))
-    other_ded = max(0.0, float(req.other_deductions or 0.0))
-    gross = basic + housing + transport + other_allow
+    days_worked = float(req.days_worked or 30.0)
+    cutoff_period = req.cutoff_period or f"{datetime(req.year, req.month, 1).strftime('%B 01')}-{calendar.monthrange(req.year, req.month)[1]}, {req.year}"
     
-    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, housing)
+    daily_rate = float(req.daily_rate if req.daily_rate is not None else (basic / 30.0 if basic > 0 else 83.33333333))
+    hourly_rate = float(req.hourly_rate if req.hourly_rate is not None else (daily_rate / 8.0 if daily_rate > 0 else 10.42))
+    ot_rate = float(req.ot_rate if req.ot_rate is not None else round(hourly_rate * 1.5, 2))
+    
+    working_hours = float(req.working_hours if req.working_hours is not None else (days_worked * 8.0))
+    regular_pay = float(req.regular_pay if req.regular_pay is not None else round(working_hours * hourly_rate, 2))
+    
+    ot_hours = float(req.ot_hours or 0.0)
+    ot_pay = float(req.ot_pay if req.ot_pay is not None else round(ot_hours * ot_rate, 2))
+    subtotal_pay = round(regular_pay + ot_pay, 2)
+    
+    rest_day_hours = float(req.rest_day_hours or 0.0)
+    rest_day_rate = float(req.rest_day_rate if req.rest_day_rate is not None else hourly_rate)
+    rest_day_pay = float(req.rest_day_pay if req.rest_day_pay is not None else round(rest_day_hours * rest_day_rate, 2))
+    
+    holiday_hours = float(req.holiday_hours or 0.0)
+    holiday_rate = float(req.holiday_rate if req.holiday_rate is not None else hourly_rate)
+    holiday_pay = float(req.holiday_pay if req.holiday_pay is not None else round(holiday_hours * holiday_rate, 2))
+    
+    meal_allowance_qty = float(req.meal_allowance_qty or 0.0)
+    meal_allowance_rate = float(req.meal_allowance_rate if req.meal_allowance_rate is not None else (10.0 if meal_allowance_qty > 0 else 0.0))
+    meal_allowance_pay = float(req.meal_allowance_pay if req.meal_allowance_pay is not None else (float(req.housing_allowance or 0.0) or round(meal_allowance_qty * meal_allowance_rate, 2)))
+    
+    adjustment_add = float(req.adjustment_add if req.adjustment_add is not None else float(req.other_allowances or 0.0))
+    total_pay = round(subtotal_pay + rest_day_pay + holiday_pay + meal_allowance_pay + adjustment_add, 2)
+    
+    wps_deduction = float(req.wps_deduction or 0.0)
+    water_bill = float(req.water_bill or 0.0)
+    other_ded = float(req.other_deductions or 0.0)
+    
+    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, meal_allowance_pay)
     gosi_emp = gosi_res["employee_deduction"]
     gosi_empr = gosi_res["employer_contribution"]
-    net = max(0.0, gross - gosi_emp - other_ded)
+    
+    total_deductions = round(wps_deduction + water_bill + gosi_emp + other_ded, 2)
+    net_pay = max(0.0, round(total_pay - total_deductions, 2))
+    
+    cash_advance = float(req.cash_advance or 0.0)
+    adjustment_sub = float(req.adjustment_sub or 0.0)
+    actual_pay = max(0.0, round(net_pay - cash_advance - adjustment_sub, 2))
+    
+    housing = meal_allowance_pay
+    transport = float(req.transport_allowance or 0.0)
+    other_allow = adjustment_add
+    gross = total_pay
     
     existing_detail = db.query_one("SELECT id FROM payroll_details WHERE payroll_run_id = ? AND employee_id = ?", (run_id, req.employee_id))
     if existing_detail:
@@ -1527,25 +1565,69 @@ def save_worker_monthly_pay(
                 gosi_employee = ?,
                 gosi_employer = ?,
                 other_deductions = ?,
-                net_salary = ?
+                net_salary = ?,
+                cutoff_period = ?,
+                days_worked = ?,
+                daily_rate = ?,
+                hourly_rate = ?,
+                ot_rate = ?,
+                working_hours = ?,
+                regular_pay = ?,
+                ot_hours = ?,
+                ot_pay = ?,
+                subtotal_pay = ?,
+                rest_day_hours = ?,
+                rest_day_pay = ?,
+                holiday_hours = ?,
+                holiday_pay = ?,
+                meal_allowance_qty = ?,
+                meal_allowance_rate = ?,
+                meal_allowance_pay = ?,
+                adjustment_add = ?,
+                total_pay = ?,
+                wps_deduction = ?,
+                water_bill = ?,
+                total_deductions = ?,
+                cash_advance = ?,
+                adjustment_sub = ?,
+                actual_pay = ?
             WHERE id = ?
-        """, (basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net, existing_detail["id"]))
+        """, (
+            basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net_pay,
+            cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate, working_hours, regular_pay,
+            ot_hours, ot_pay, subtotal_pay, rest_day_hours, rest_day_pay, holiday_hours, holiday_pay,
+            meal_allowance_qty, meal_allowance_rate, meal_allowance_pay, adjustment_add, total_pay,
+            wps_deduction, water_bill, total_deductions, cash_advance, adjustment_sub, actual_pay,
+            existing_detail["id"]
+        ))
         detail_id = existing_detail["id"]
     else:
         detail_id = db.execute_cmd("""
             INSERT INTO payroll_details (
                 payroll_run_id, employee_id, basic_salary, housing_allowance,
                 transport_allowance, other_allowances, gross_salary,
-                gosi_employee, gosi_employer, other_deductions, net_salary
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (run_id, req.employee_id, basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net))
+                gosi_employee, gosi_employer, other_deductions, net_salary,
+                cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate,
+                working_hours, regular_pay, ot_hours, ot_pay, subtotal_pay,
+                rest_day_hours, rest_day_pay, holiday_hours, holiday_pay,
+                meal_allowance_qty, meal_allowance_rate, meal_allowance_pay,
+                adjustment_add, total_pay, wps_deduction, water_bill,
+                total_deductions, cash_advance, adjustment_sub, actual_pay
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            run_id, req.employee_id, basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net_pay,
+            cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate, working_hours, regular_pay,
+            ot_hours, ot_pay, subtotal_pay, rest_day_hours, rest_day_pay, holiday_hours, holiday_pay,
+            meal_allowance_qty, meal_allowance_rate, meal_allowance_pay, adjustment_add, total_pay,
+            wps_deduction, water_bill, total_deductions, cash_advance, adjustment_sub, actual_pay
+        ))
         
     # Recompute parent run totals
     details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
     tot_basic = sum(float(d["basic_salary"]) for d in details)
-    tot_allowances = sum(float(d["housing_allowance"]) + float(d["transport_allowance"]) + float(d["other_allowances"]) for d in details)
-    tot_deductions = sum(float(d["gosi_employee"]) + float(d["other_deductions"]) for d in details)
-    tot_net = sum(float(d["net_salary"]) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"] or 0) + float(d["transport_allowance"] or 0) + float(d["other_allowances"] or 0) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"] or 0) + float(d["other_deductions"] or 0) for d in details)
+    tot_net = sum(float(d["net_salary"] or 0) for d in details)
     
     db.execute_cmd("""
         UPDATE payroll_runs SET
@@ -1559,7 +1641,8 @@ def save_worker_monthly_pay(
     return {
         "message": f"Successfully updated monthly payroll for {emp['first_name']} {emp['last_name']}",
         "detail_id": detail_id,
-        "net_salary": net
+        "net_salary": net_pay,
+        "actual_pay": actual_pay
     }
 
 @app.delete("/api/payroll/monthly-roster/worker/{detail_id}")
@@ -1579,10 +1662,10 @@ def delete_worker_monthly_pay(
     
     # Recompute parent run totals
     details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
-    tot_basic = sum(float(d["basic_salary"]) for d in details)
-    tot_allowances = sum(float(d["housing_allowance"]) + float(d["transport_allowance"]) + float(d["other_allowances"]) for d in details)
-    tot_deductions = sum(float(d["gosi_employee"]) + float(d["other_deductions"]) for d in details)
-    tot_net = sum(float(d["net_salary"]) for d in details)
+    tot_basic = sum(float(d["basic_salary"] or 0) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"] or 0) + float(d["transport_allowance"] or 0) + float(d["other_allowances"] or 0) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"] or 0) + float(d["other_deductions"] or 0) for d in details)
+    tot_net = sum(float(d["net_salary"] or 0) for d in details)
     
     db.execute_cmd("""
         UPDATE payroll_runs SET
@@ -1643,15 +1726,36 @@ def download_payslip_pdf(
     pay_data = {
         "month": detail["payroll_month"],
         "year": detail["payroll_year"],
-        "basic_salary": detail["basic_salary"],
-        "housing_allowance": detail["housing_allowance"],
-        "transport_allowance": detail["transport_allowance"],
-        "other_allowances": detail["other_allowances"],
-        "gross_salary": detail["gross_salary"],
-        "gosi_employee": detail["gosi_employee"],
-        "gosi_employer": detail["gosi_employer"],
-        "other_deductions": detail["other_deductions"],
-        "net_salary": detail["net_salary"]
+        "cutoff_period": detail.get("cutoff_period"),
+        "days_worked": detail.get("days_worked"),
+        "daily_rate": detail.get("daily_rate"),
+        "hourly_rate": detail.get("hourly_rate"),
+        "ot_rate": detail.get("ot_rate"),
+        "working_hours": detail.get("working_hours"),
+        "regular_pay": detail.get("regular_pay"),
+        "ot_hours": detail.get("ot_hours"),
+        "ot_pay": detail.get("ot_pay"),
+        "subtotal_pay": detail.get("subtotal_pay"),
+        "rest_day_hours": detail.get("rest_day_hours"),
+        "rest_day_rate": detail.get("rest_day_rate"),
+        "rest_day_pay": detail.get("rest_day_pay"),
+        "holiday_hours": detail.get("holiday_hours"),
+        "holiday_rate": detail.get("holiday_rate"),
+        "holiday_pay": detail.get("holiday_pay"),
+        "meal_allowance_qty": detail.get("meal_allowance_qty"),
+        "meal_allowance_rate": detail.get("meal_allowance_rate"),
+        "meal_allowance_pay": detail.get("meal_allowance_pay") or detail.get("housing_allowance"),
+        "adjustment_add": detail.get("adjustment_add") or detail.get("other_allowances"),
+        "total_pay": detail.get("total_pay") or detail.get("gross_salary"),
+        "wps_deduction": detail.get("wps_deduction"),
+        "water_bill": detail.get("water_bill"),
+        "gosi_employee": detail.get("gosi_employee"),
+        "other_deductions": detail.get("other_deductions"),
+        "total_deductions": detail.get("total_deductions"),
+        "net_salary": detail.get("net_salary"),
+        "cash_advance": detail.get("cash_advance"),
+        "adjustment_sub": detail.get("adjustment_sub"),
+        "actual_pay": detail.get("actual_pay")
     }
     
     pdf_bytes = generate_payslip_pdf(emp, pay_data, settings)
