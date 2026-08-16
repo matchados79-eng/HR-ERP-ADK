@@ -1262,11 +1262,27 @@ function renderTimesheetCalendarGrid() {
     else if (d.day_type === 'Absent') cardClass += ' absent';
 
     const isChecked = d.meal_allowance === 1 ? 'checked' : '';
+    const isFriday = d.weekday === 'Fri';
+    let fridayNote = '';
+    if (isFriday) {
+      const daysMap = {};
+      currentTimesheetDays.forEach(x => { daysMap[x.day] = x; });
+      const thu = daysMap[d.day - 1];
+      const sat = daysMap[d.day + 1];
+      const thuAbsent = thu && (thu.day_type === 'Absent' || ((parseFloat(thu.regular_hours) || 0) === 0 && !['Holiday', 'Leave', 'RestDay'].includes(thu.day_type)));
+      const satAbsent = sat && (sat.day_type === 'Absent' || ((parseFloat(sat.regular_hours) || 0) === 0 && !['Holiday', 'Leave', 'RestDay'].includes(sat.day_type)));
+      
+      if (!thuAbsent && !satAbsent) {
+        fridayNote = '<span style="font-size: 0.58rem; color: #059669; font-weight: 800;" title="Paid Rest Day (Thu & Sat present)">● Paid (8h)</span>';
+      } else {
+        fridayNote = '<span style="font-size: 0.58rem; color: #DC2626; font-weight: 800;" title="Unpaid: Absent on Thu or Sat">● Unpaid (Abs)</span>';
+      }
+    }
 
     return `
       <div class="${cardClass}" id="ts-card-day-${d.day}">
         <div class="ts-day-hdr">
-          <div class="ts-day-num">${d.day}</div>
+          <div class="ts-day-num">${d.day} ${fridayNote}</div>
           <div class="ts-day-name">${d.weekday}</div>
         </div>
 
@@ -1390,13 +1406,43 @@ function recalcTimesheetSummaryLive() {
   const otRate = parseFloat(document.getElementById('ts-ot-rate').value || (hourlyRate * 1.5));
   const isSaudi = parseInt(document.getElementById('ts-is-saudi').value) === 1;
 
-  // Aggregates from calendar
-  const totRegHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 0), 0);
+  // Friday Paid Rest Day Policy: Paid (8h) if NOT absent on Thu & Sat
+  const daysMap = {};
+  currentTimesheetDays.forEach(d => { daysMap[d.day] = d; });
+
+  let totRegHours = 0.0;
+  let restDayHours = 0.0;
+  let holidayHours = 0.0;
+
+  currentTimesheetDays.forEach(d => {
+    const regH = parseFloat(d.regular_hours) || 0.0;
+    const isFriday = d.weekday === 'Fri';
+
+    if (d.day_type === 'Holiday') {
+      holidayHours += (regH > 0 ? regH : 8.0);
+    } else if (d.day_type === 'RestDay' || isFriday) {
+      if (regH > 0) {
+        restDayHours += regH;
+      } else {
+        const thu = daysMap[d.day - 1];
+        const sat = daysMap[d.day + 1];
+
+        const thuAbsent = thu && (thu.day_type === 'Absent' || ((parseFloat(thu.regular_hours) || 0) === 0 && !['Holiday', 'Leave', 'RestDay'].includes(thu.day_type)));
+        const satAbsent = sat && (sat.day_type === 'Absent' || ((parseFloat(sat.regular_hours) || 0) === 0 && !['Holiday', 'Leave', 'RestDay'].includes(sat.day_type)));
+
+        if (!thuAbsent && !satAbsent) {
+          restDayHours += 8.0; // Paid Friday
+        } else {
+          restDayHours += 0.0; // Unpaid Friday
+        }
+      }
+    } else {
+      totRegHours += regH;
+    }
+  });
+
   const totOtHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.ot_hours) || 0), 0);
   const daysWorked = currentTimesheetDays.filter(d => (parseFloat(d.regular_hours) || 0) > 0 || d.day_type === 'Regular').length;
-  
-  let restDayHours = currentTimesheetDays.filter(d => d.day_type === 'RestDay').reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 8.0), 0);
-  let holidayHours = currentTimesheetDays.filter(d => d.day_type === 'Holiday').reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 8.0), 0);
   const mealQty = currentTimesheetDays.filter(d => parseInt(d.meal_allowance) === 1).length;
 
   const regularPay = Math.round(totRegHours * hourlyRate * 100) / 100;

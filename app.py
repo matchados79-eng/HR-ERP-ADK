@@ -1809,24 +1809,43 @@ def save_worker_timesheet_and_payroll(
             d.day_type or "Regular", int(d.meal_allowance or 0), d.notes or ""
         ))
         
-    # 2. Aggregate timesheet totals
-    tot_regular_hours = sum(float(d.regular_hours or 0) for d in req.days)
+    # 2. Aggregate timesheet totals & Saudi Friday Paid Rest Day Rule
+    days_by_num = {d.day: d for d in req.days}
+    tot_regular_hours = 0.0
     tot_ot_hours = sum(float(d.ot_hours or 0) for d in req.days)
-    
+    tot_rest_day_hours = 0.0
+    tot_holiday_hours = 0.0
+
+    for d in req.days:
+        reg_h = float(d.regular_hours or 0)
+        dt = date(req.year, req.month, d.day)
+        is_friday = (dt.weekday() == 4)  # 4 is Friday in Python datetime
+
+        if d.day_type == 'Holiday':
+            tot_holiday_hours += (reg_h if reg_h > 0 else 8.0)
+        elif d.day_type == 'RestDay' or is_friday:
+            if reg_h > 0:
+                # Explicit hours entered
+                tot_rest_day_hours += reg_h
+            else:
+                # Friday Paid Rest Day Policy:
+                # Paid if employee was NOT absent on Thursday (day - 1) AND Saturday (day + 1)
+                thu = days_by_num.get(d.day - 1)
+                sat = days_by_num.get(d.day + 1)
+                
+                thu_absent = (thu is not None and (thu.day_type == 'Absent' or (float(thu.regular_hours or 0) == 0 and thu.day_type not in ['Holiday', 'Leave', 'RestDay'])))
+                sat_absent = (sat is not None and (sat.day_type == 'Absent' or (float(sat.regular_hours or 0) == 0 and sat.day_type not in ['Holiday', 'Leave', 'RestDay'])))
+                
+                if not thu_absent and not sat_absent:
+                    tot_rest_day_hours += 8.0  # Paid Friday Rest Day
+                else:
+                    tot_rest_day_hours += 0.0  # Unpaid due to absence on Thu or Sat
+        else:
+            tot_regular_hours += reg_h
+
     # Days worked: any day where regular hours > 0 or marked Regular
     days_worked = sum(1 for d in req.days if float(d.regular_hours or 0) > 0 or d.day_type == 'Regular')
     
-    # Friday / Rest Day hours
-    tot_rest_day_hours = sum(float(d.regular_hours or 0) for d in req.days if d.day_type == 'RestDay')
-    if tot_rest_day_hours == 0:
-        # Check if user marked Friday days
-        tot_rest_day_hours = sum(8.0 for d in req.days if d.day_type == 'RestDay')
-        
-    # Holiday hours
-    tot_holiday_hours = sum(float(d.regular_hours or 0) for d in req.days if d.day_type == 'Holiday')
-    if tot_holiday_hours == 0:
-        tot_holiday_hours = sum(8.0 for d in req.days if d.day_type == 'Holiday')
-        
     # Meal allowances count
     tot_meal_qty = sum(1 for d in req.days if int(d.meal_allowance or 0) == 1)
     
