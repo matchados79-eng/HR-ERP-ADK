@@ -1182,18 +1182,12 @@ function recalcAdjustWorkerPayLive() {
   const additionAdj = parseFloat(document.getElementById('adjust-other-allowance').value || 0);
   const totalPay = Math.round((subtotalPay + restDayPay + holidayPay + mealPay + additionAdj) * 100) / 100;
 
-  // Deductions
+  // Deductions: strictly sum explicit deduction inputs (no unexpected auto-deductions)
   const wpsDed = parseFloat(document.getElementById('adjust-wps-deduction').value || 0);
   const waterBill = parseFloat(document.getElementById('adjust-water-bill').value || 0);
   const otherDed = parseFloat(document.getElementById('adjust-other-deductions').value || 0);
 
-  let gosi = 0.0;
-  if (isSaudi) {
-    const gosiBase = Math.min(totalPay, 45000);
-    gosi = Math.round(gosiBase * 0.0975 * 100) / 100;
-  }
-
-  const totalDeductions = Math.round((wpsDed + waterBill + otherDed + gosi) * 100) / 100;
+  const totalDeductions = Math.round((wpsDed + waterBill + otherDed) * 100) / 100;
   const netPay = Math.max(0, Math.round((totalPay - totalDeductions) * 100) / 100);
 
   const cashAdvance = parseFloat(document.getElementById('adjust-cash-advance').value || 0);
@@ -1729,18 +1723,12 @@ function recalcTimesheetSummaryLive() {
   const additionAdj = parseFloat(document.getElementById('ts-adjustment-add').value || 0);
   const totalPay = Math.round((subtotalPay + restDayPay + holidayPay + mealPay + additionAdj) * 100) / 100;
 
-  // Deductions
+  // Deductions: strictly sum explicit deduction inputs (no unexpected auto-deductions)
   const wpsDed = parseFloat(document.getElementById('ts-wps-deduction').value || 0);
   const waterBill = parseFloat(document.getElementById('ts-water-bill').value || 0);
   const otherDed = parseFloat(document.getElementById('ts-other-deductions').value || 0);
 
-  let gosi = 0.0;
-  if (isSaudi) {
-    const gosiBase = Math.min(totalPay, 45000);
-    gosi = Math.round(gosiBase * 0.0975 * 100) / 100;
-  }
-
-  const totalDeductions = Math.round((wpsDed + waterBill + otherDed + gosi) * 100) / 100;
+  const totalDeductions = Math.round((wpsDed + waterBill + otherDed) * 100) / 100;
   const netPay = Math.max(0, Math.round((totalPay - totalDeductions) * 100) / 100);
 
   const cashAdvance = parseFloat(document.getElementById('ts-cash-advance').value || 0);

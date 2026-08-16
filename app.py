@@ -1543,15 +1543,17 @@ def save_worker_monthly_pay(
     meal_allowance_pay = float(req.meal_allowance_pay if req.meal_allowance_pay is not None else (float(req.housing_allowance or 0.0) or round(meal_allowance_qty * meal_allowance_rate, 2)))
     
     adjustment_add = float(req.adjustment_add if req.adjustment_add is not None else float(req.other_allowances or 0.0))
-    total_pay = round(subtotal_pay + rest_day_pay + holiday_pay + meal_allowance_pay + adjustment_add, 2)
-    
     wps_deduction = float(req.wps_deduction or 0.0)
     water_bill = float(req.water_bill or 0.0)
     other_ded = float(req.other_deductions or 0.0)
     
-    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, meal_allowance_pay)
-    gosi_emp = gosi_res["employee_deduction"]
-    gosi_empr = gosi_res["employer_contribution"]
+    # For Direct/site workers or explicit 0 deductions, strictly use input deductions
+    gosi_emp = 0.0
+    gosi_empr = 0.0
+    if emp["is_saudi"] == 1 and req.worker_type != "Direct":
+        gosi_res = SaudiHREngine.calculate_gosi(True, basic, meal_allowance_pay)
+        gosi_emp = gosi_res["employee_deduction"]
+        gosi_empr = gosi_res["employer_contribution"]
     
     total_deductions = round(wps_deduction + water_bill + gosi_emp + other_ded, 2)
     net_pay = max(0.0, round(total_pay - total_deductions, 2))
@@ -1889,14 +1891,17 @@ def save_worker_timesheet_and_payroll(
     adjustment_add = float(req.adjustment_add or 0.0)
     total_pay = round(subtotal_pay + rest_day_pay + holiday_pay + meal_allowance_pay + adjustment_add, 2)
     
-    # Deductions
+    # Deductions: strictly sum explicit deduction inputs (no unexpected auto-deductions)
     wps_deduction = float(req.wps_deduction or 0.0)
     water_bill = float(req.water_bill or 0.0)
     other_ded = float(req.other_deductions or 0.0)
     
-    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, total_pay, 0.0)
-    gosi_emp = gosi_res["employee_deduction"]
-    gosi_empr = gosi_res["employer_contribution"]
+    gosi_emp = 0.0
+    gosi_empr = 0.0
+    if emp["is_saudi"] == 1 and req.worker_type != "Direct":
+        gosi_res = SaudiHREngine.calculate_gosi(True, total_pay, 0.0)
+        gosi_emp = gosi_res["employee_deduction"]
+        gosi_empr = gosi_res["employer_contribution"]
     
     total_deductions = round(wps_deduction + water_bill + other_ded + gosi_emp, 2)
     net_pay = max(0.0, round(total_pay - total_deductions, 2))
