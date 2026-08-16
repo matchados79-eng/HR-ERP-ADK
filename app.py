@@ -4,7 +4,8 @@ import json
 import zipfile
 import shutil
 import tempfile
-from datetime import datetime, date
+import calendar
+from datetime import datetime, date, timedelta
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header, Query
@@ -856,7 +857,66 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
         new_status, req.remarks or None, sp_id
     ))
     
-    return {"message": "Supplier payment record updated successfully"}
+def add_one_month(date_str: Optional[str]) -> str:
+    """Safely increments a YYYY-MM-DD date string by 1 month, capping at the target month's maximum days."""
+    if not date_str or not str(date_str).strip():
+        return date.today().strftime("%Y-%m-%d")
+    try:
+        dt = datetime.strptime(str(date_str).strip(), "%Y-%m-%d")
+        year = dt.year + (dt.month // 12)
+        month = (dt.month % 12) + 1
+        max_days = calendar.monthrange(year, month)[1]
+        day = min(dt.day, max_days)
+        return date(year, month, day).strftime("%Y-%m-%d")
+    except Exception:
+        return (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+
+@app.post("/api/suppliers/payments/{sp_id}/repeat-next-month")
+def repeat_supplier_payment_next_month(
+    sp_id: int,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """Duplicates an existing invoice for the following month with the same amount and automatically calculated next-month dates."""
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier invoice not found.")
+        
+    next_inv_date = add_one_month(sp["invoice_date"])
+    next_due_date = add_one_month(sp["due_date"])
+    next_sup_start = add_one_month(sp["supply_start_date"] or sp["supply_date"])
+    next_sup_end = add_one_month(sp["supply_end_date"] or sp["supply_date"])
+    
+    # Generate distinct new invoice number
+    old_num = sp.get("invoice_number") or ""
+    import random
+    new_inv_num = f"{old_num}-REC" if old_num and not old_num.endswith("-REC") else f"INV-{datetime.now().year}-{random.randint(1000, 9999)}"
+    
+    inv_amount = float(sp["amount"])
+    
+    new_id = db.execute_cmd("""
+        INSERT INTO supplier_payments (
+            company_name, invoice_number, invoice_date, due_date, invoice_details,
+            supply_date, supply_start_date, supply_end_date, amount, paid_amount,
+            remaining_amount, status, remarks, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        sp["company_name"], new_inv_num, next_inv_date, next_due_date, sp["invoice_details"],
+        next_sup_start, next_sup_start, next_sup_end, inv_amount, 0.0,
+        inv_amount, "Pending", f"Recurring monthly bill (Cloned from #{sp_id})",
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
+    
+    return {
+        "message": f"Recurring invoice for next month created successfully (Invoice #{new_id})",
+        "id": new_id,
+        "company_name": sp["company_name"],
+        "amount": inv_amount,
+        "invoice_number": new_inv_num,
+        "invoice_date": next_inv_date,
+        "due_date": next_due_date,
+        "supply_start_date": next_sup_start,
+        "supply_end_date": next_sup_end
+    }
 
 @app.post("/api/suppliers/payments/{sp_id}/disburse")
 def disburse_supplier_payment(

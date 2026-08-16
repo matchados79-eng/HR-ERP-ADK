@@ -1463,6 +1463,9 @@ async function loadSupplierPayments() {
                 </button>
               ` : ''}
               ${currentUserRole !== 'viewer' ? `
+                <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="repeatInvoiceNextMonth(${sp.id})" title="Create recurring invoice for next month with same amount">
+                  🔁 Next Month
+                </button>
                 <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openEditSupplierModal(${sp.id})">
                   ✏️ Edit
                 </button>
@@ -1611,6 +1614,87 @@ async function submitEditSupplierPayment() {
   } catch (err) {
     showToast(`Update error: ${err}`, 'error');
   }
+}
+
+function addOneMonthToDate(dateStr) {
+  if (!dateStr || !dateStr.includes('-')) return new Date().toISOString().split('T')[0];
+  const parts = dateStr.split('-');
+  let year = parseInt(parts[0], 10);
+  let month = parseInt(parts[1], 10);
+  let day = parseInt(parts[2], 10);
+
+  month += 1;
+  if (month > 12) {
+    month = 1;
+    year += 1;
+  }
+  const maxDay = new Date(year, month, 0).getDate();
+  const validDay = Math.min(day, maxDay);
+
+  const mm = String(month).padStart(2, '0');
+  const dd = String(validDay).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
+}
+
+async function repeatInvoiceNextMonth(spId) {
+  const sp = allSupplierPayments.find(x => x.id === spId);
+  const vendor = sp ? sp.company_name : 'supplier';
+  const amt = sp ? `SAR ${Number(sp.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}` : '';
+  
+  if (!confirm(`Create a recurring next-month invoice for "${vendor}" (${amt}) with dates automatically shifted to next month?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/suppliers/payments/${spId}/repeat-next-month`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to create recurring invoice', 'error');
+      return;
+    }
+
+    const data = await res.json();
+    loadSupplierPayments();
+    loadFinanceAnalytics();
+    loadDashboardData();
+    showToast(`✅ Recurring invoice created! Due: ${data.due_date} (SAR ${Number(data.amount).toLocaleString('en-US', {minimumFractionDigits: 2})})`);
+  } catch (err) {
+    showToast(`Recurring invoice error: ${err}`, 'error');
+  }
+}
+
+function duplicateInvoiceToNextMonth() {
+  const spId = parseInt(document.getElementById('edit-supplier-id')?.value, 10);
+  const sp = allSupplierPayments.find(x => x.id === spId);
+  if (!sp) return;
+
+  closeModal('modal-edit-supplier');
+  openRecordSupplierPaymentModal(sp.company_name);
+
+  const nextInvDate = addOneMonthToDate(sp.invoice_date);
+  const nextDueDate = addOneMonthToDate(sp.due_date);
+  const nextSupStart = addOneMonthToDate(sp.supply_start_date || sp.supply_date);
+  const nextSupEnd = addOneMonthToDate(sp.supply_end_date || sp.supply_date);
+
+  const invDateEl = document.querySelector('#record-supplier-form input[name="invoice_date"]');
+  const dueDateEl = document.querySelector('#record-supplier-form input[name="due_date"]');
+  const supStartEl = document.querySelector('#record-supplier-form input[name="supply_start_date"]');
+  const supEndEl = document.querySelector('#record-supplier-form input[name="supply_end_date"]');
+  const detailsEl = document.querySelector('#record-supplier-form input[name="invoice_details"]');
+  const amtEl = document.querySelector('#record-supplier-form input[name="amount"]');
+  const remarksEl = document.querySelector('#record-supplier-form textarea[name="remarks"]');
+
+  if (invDateEl) invDateEl.value = nextInvDate;
+  if (dueDateEl) dueDateEl.value = nextDueDate;
+  if (supStartEl) supStartEl.value = nextSupStart;
+  if (supEndEl) supEndEl.value = nextSupEnd;
+  if (detailsEl) detailsEl.value = sp.invoice_details || '';
+  if (amtEl) amtEl.value = sp.amount;
+  if (remarksEl) remarksEl.value = `Recurring monthly invoice (cloned from #${sp.id})`;
 }
 
 function openDisburseSupplierPaymentModal(spId, companyName, remainingAmount) {

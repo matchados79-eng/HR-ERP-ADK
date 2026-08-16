@@ -1547,9 +1547,14 @@
             <textarea id="edit-supplier-remarks" class="form-control" rows="2"></textarea>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-supplier')">Cancel</button>
-          <button type="submit" class="btn btn-primary">Update Invoice</button>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" style="border-color: var(--primary); color: var(--primary);" onclick="duplicateInvoiceToNextMonth()">
+            🔁 Duplicate for Next Month
+          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-supplier')">Cancel</button>
+            <button type="submit" class="btn btn-primary">Update Invoice</button>
+          </div>
         </div>
       </form>
     </div>

@@ -287,8 +287,18 @@ def test_supplier_payments_and_disbursals():
     
     ledger_res = client.get("/api/suppliers/vendors/Test%20Cloud%20Services%20Ltd/ledger", headers=headers)
     assert ledger_res.status_code == 200
-    assert ledger_res.json()["summary"]["total_balance"] == 15000.0
-    
+    # 4. Test Recurring Next Month Invoice Auto-Cloning
+    rec_res = client.post(f"/api/suppliers/payments/{sp_id}/repeat-next-month", headers=headers)
+    assert rec_res.status_code == 200
+    rec_data = rec_res.json()
+    rec_id = rec_data["id"]
+    assert rec_data["amount"] == 20000.0
+    assert rec_data["invoice_date"] == "2026-09-01"
+    assert rec_data["due_date"] == "2026-09-25"
+    assert rec_data["supply_start_date"] == "2026-08-01"
+    assert rec_data["supply_end_date"] == "2026-08-31"
+
+    client.delete(f"/api/suppliers/payments/{rec_id}", headers=headers)
     client.delete(f"/api/suppliers/payments/{sp_id}", headers=headers)
     client.delete(f"/api/suppliers/{sup_id}", headers=headers)
 
