@@ -7,7 +7,11 @@ from typing import List, Dict, Any, Optional
 DB_WORKSPACE_PATH = os.path.join(os.path.dirname(__file__), "saudi_hr.db")
 DB_TMP_PATH = os.path.join(tempfile.gettempdir(), "saudi_hr_runtime.db")
 
+def is_vercel() -> bool:
+    return bool(os.environ.get("VERCEL"))
+
 def sync_from_workspace():
+    """Restores database from persistent workspace storage to runtime temp directory."""
     if os.path.exists(DB_WORKSPACE_PATH) and os.path.getsize(DB_WORKSPACE_PATH) > 0:
         try:
             shutil.copy2(DB_WORKSPACE_PATH, DB_TMP_PATH)
@@ -15,7 +19,8 @@ def sync_from_workspace():
             print(f"Warning syncing DB from workspace: {e}")
 
 def sync_to_workspace():
-    if os.environ.get("VERCEL"):
+    """Flushes runtime database to persistent workspace storage."""
+    if is_vercel():
         return
     if os.path.exists(DB_TMP_PATH):
         try:
@@ -24,18 +29,26 @@ def sync_to_workspace():
             print(f"Warning syncing DB to workspace: {e}")
 
 def get_db_connection():
+    """Returns a thread-safe SQLite connection with WAL mode and foreign key constraints enabled."""
     if not os.path.exists(DB_TMP_PATH):
         if os.path.exists(DB_WORKSPACE_PATH) and os.path.getsize(DB_WORKSPACE_PATH) > 0:
             sync_from_workspace()
             
-    conn = sqlite3.connect(DB_TMP_PATH)
+    conn = sqlite3.connect(DB_TMP_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+    except Exception:
+        pass
     return conn
 
 def init_db():
     sync_from_workspace()
     conn = get_db_connection()
     cursor = conn.cursor()
+    
     cursor.execute("PRAGMA foreign_keys = ON;")
     
     # Departments
@@ -175,7 +188,7 @@ def init_db():
         total_allowances REAL DEFAULT 0.0,
         total_deductions REAL DEFAULT 0.0,
         total_net_pay REAL DEFAULT 0.0,
-        status TEXT DEFAULT 'Draft',
+        status TEXT DEFAULT 'Approved',
         processed_at TEXT NOT NULL
     );
     """)
@@ -208,6 +221,18 @@ def init_db():
     );
     """)
     
+    # Create Indexes for High Performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_emp_dept ON employees(department_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_emp_status ON employees(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaves_emp ON leaves(employee_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_docs_emp ON documents(employee_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payroll_dtl_run ON payroll_details(payroll_run_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payroll_dtl_emp ON payroll_details(employee_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_company ON supplier_payments(company_name);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_status ON supplier_payments(status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_logs_sp ON supplier_payment_logs(supplier_payment_id);")
+    
+    # Default Settings
     default_settings = {
         "company_name": "Al-Amal Enterprise Solutions KSA",
         "company_arabic_name": "شركة الأمل لترشيد الحلول المتكاملة",
@@ -223,6 +248,7 @@ def init_db():
     for k, v in default_settings.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (k, v))
         
+    # Default Admin User
     from auth import hash_password
     default_admin_hash = hash_password("AdminSecret123!")
     cursor.execute("""
@@ -259,3 +285,11 @@ def execute_cmd(sql: str, params: tuple = ()) -> int:
     conn.close()
     sync_to_workspace()
     return last_id
+
+def execute_script(sql_script: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.executescript(sql_script)
+    conn.commit()
+    conn.close()
+    sync_to_workspace()

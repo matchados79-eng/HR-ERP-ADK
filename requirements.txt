@@ -4,3 +4,4 @@ reportlab
 pillow
 pydantic
 python-multipart
+httpx

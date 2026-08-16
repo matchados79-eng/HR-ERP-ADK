@@ -7,7 +7,42 @@ class DepartmentCreate(BaseModel):
     manager_name: Optional[str] = None
     budget: Optional[float] = 0.0
 
+class DepartmentUpdate(BaseModel):
+    name: str
+    code: str
+    manager_name: Optional[str] = None
+    budget: Optional[float] = 0.0
+
 class EmployeeCreate(BaseModel):
+    emp_code: str
+    first_name: str
+    last_name: str
+    arabic_name: Optional[str] = None
+    email: str
+    phone: Optional[str] = None
+    national_id_iqama: str
+    nationality: str
+    gender: Optional[str] = "Male"
+    is_saudi: int = 1
+    dob: Optional[str] = None
+    department_id: Optional[int] = None
+    designation: str
+    hire_date: str
+    contract_type: Optional[str] = "Fixed"
+    contract_end_date: Optional[str] = None
+    iqama_expiry_date: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry_date: Optional[str] = None
+    bank_name: Optional[str] = None
+    iban: Optional[str] = None
+    basic_salary: float = 0.0
+    housing_allowance: float = 0.0
+    transport_allowance: float = 0.0
+    other_allowances: float = 0.0
+    gosi_number: Optional[str] = None
+    status: Optional[str] = "Active"
+
+class EmployeeUpdate(BaseModel):
     emp_code: str
     first_name: str
     last_name: str
@@ -84,3 +119,6 @@ class GOSIRequest(BaseModel):
 class PayrollRunRequest(BaseModel):
     month: int
     year: int
+
+class BackupRestoreRequest(BaseModel):
+    backup_json: Optional[str] = None

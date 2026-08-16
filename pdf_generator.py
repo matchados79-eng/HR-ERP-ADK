@@ -7,6 +7,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
+    """
+    Generates official Bilingual Saudi Standard Payslip PDF with GOSI deductions.
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -23,18 +26,18 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         'DocTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=20,
-        leading=24,
+        fontSize=18,
+        leading=22,
         textColor=colors.HexColor('#006C35'),
-        alignment=0
+        alignment=2
     )
     
     subtitle_style = ParagraphStyle(
         'SubTitle',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=10,
-        leading=14,
+        fontSize=9,
+        leading=13,
         textColor=colors.HexColor('#4B5563')
     )
     
@@ -42,8 +45,8 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         'SectionHeading',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=12,
-        leading=16,
+        fontSize=11,
+        leading=15,
         textColor=colors.HexColor('#0B5D34')
     )
     
@@ -74,11 +77,11 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     header_data = [
         [
             Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | GOSI: {gosi_reg}</font>", subtitle_style),
-            Paragraph("<b>SALARY PAYSLIP</b><br/><font size=9 color='#006C35'>قسيمة الراتب</font>", title_style)
+            Paragraph("<b>SALARY PAYSLIP</b><br/><font size=9 color='#006C35'>Official Payroll Voucher</font>", title_style)
         ]
     ]
     
-    header_table = Table(header_data, colWidths=[4.0*inch, 3.2*inch])
+    header_table = Table(header_data, colWidths=[4.2*inch, 3.0*inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
@@ -87,20 +90,20 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(Spacer(1, 10))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
     
-    emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}"
-    is_saudi_str = "Saudi National" if employee_data.get("is_saudi") else "Expat / Non-Saudi"
+    emp_name = f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip()
+    is_saudi_str = "Saudi National" if employee_data.get("is_saudi") == 1 else "Expat / Non-Saudi"
     
     emp_info_data = [
         [
             Paragraph("<b>Employee Name:</b>", cell_bold), Paragraph(emp_name, cell_style),
-            Paragraph("<b>Employee Code:</b>", cell_bold), Paragraph(str(employee_data.get("emp_code", "")), cell_style)
+            Paragraph("<b>Employee Code:</b>", cell_bold), Paragraph(str(employee_data.get("emp_code", "N/A")), cell_style)
         ],
         [
-            Paragraph("<b>National ID / Iqama:</b>", cell_bold), Paragraph(str(employee_data.get("national_id_iqama", "")), cell_style),
+            Paragraph("<b>National ID / Iqama:</b>", cell_bold), Paragraph(str(employee_data.get("national_id_iqama", "N/A")), cell_style),
             Paragraph("<b>Department:</b>", cell_bold), Paragraph(str(employee_data.get("department_name", "General")), cell_style)
         ],
         [
-            Paragraph("<b>Designation:</b>", cell_bold), Paragraph(str(employee_data.get("designation", "")), cell_style),
+            Paragraph("<b>Designation:</b>", cell_bold), Paragraph(str(employee_data.get("designation", "N/A")), cell_style),
             Paragraph("<b>Nationality Type:</b>", cell_bold), Paragraph(is_saudi_str, cell_style)
         ],
         [
@@ -129,38 +132,38 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     elements.append(Paragraph("Salary & Allowance Breakdown", section_heading))
     elements.append(Spacer(1, 6))
     
-    basic = payroll_detail.get("basic_salary", 0.0)
-    housing = payroll_detail.get("housing_allowance", 0.0)
-    transport = payroll_detail.get("transport_allowance", 0.0)
-    other_allow = payroll_detail.get("other_allowances", 0.0)
-    gross = payroll_detail.get("gross_salary", basic + housing + transport + other_allow)
+    basic = float(payroll_detail.get("basic_salary", 0.0))
+    housing = float(payroll_detail.get("housing_allowance", 0.0))
+    transport = float(payroll_detail.get("transport_allowance", 0.0))
+    other_allow = float(payroll_detail.get("other_allowances", 0.0))
+    gross = float(payroll_detail.get("gross_salary", basic + housing + transport + other_allow))
     
-    gosi_emp = payroll_detail.get("gosi_employee", 0.0)
-    other_ded = payroll_detail.get("other_deductions", 0.0)
+    gosi_emp = float(payroll_detail.get("gosi_employee", 0.0))
+    other_ded = float(payroll_detail.get("other_deductions", 0.0))
     total_ded = gosi_emp + other_ded
-    net_pay = payroll_detail.get("net_salary", gross - total_ded)
-    gosi_empr = payroll_detail.get("gosi_employer", 0.0)
+    net_pay = float(payroll_detail.get("net_salary", gross - total_ded))
+    gosi_empr = float(payroll_detail.get("gosi_employer", 0.0))
     
     financial_data = [
         [
-            Paragraph("<b>Earnings Category</b>", cell_bold), Paragraph("<b>Amount (SAR)</b>", cell_bold),
-            Paragraph("<b>Deductions & GOSI</b>", cell_bold), Paragraph("<b>Amount (SAR)</b>", cell_bold)
+            Paragraph("<font color='white'><b>Earnings Category</b></font>", cell_bold), Paragraph("<font color='white'><b>Amount (SAR)</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Deductions & GOSI</b></font>", cell_bold), Paragraph("<font color='white'><b>Amount (SAR)</b></font>", cell_bold)
         ],
         [
-            Paragraph("Basic Salary (الراتب الأساسي)", cell_style), Paragraph(f"{basic:,.2f}", cell_style),
-            Paragraph("GOSI Employee Share (تأمينات)", cell_style), Paragraph(f"{gosi_emp:,.2f}", cell_style)
+            Paragraph("Basic Salary", cell_style), Paragraph(f"{basic:,.2f}", cell_style),
+            Paragraph("GOSI Employee Share (9.75% / 0%)", cell_style), Paragraph(f"{gosi_emp:,.2f}", cell_style)
         ],
         [
-            Paragraph("Housing Allowance (بدل سكن)", cell_style), Paragraph(f"{housing:,.2f}", cell_style),
-            Paragraph("Other Deductions (خصومات أخرى)", cell_style), Paragraph(f"{other_ded:,.2f}", cell_style)
+            Paragraph("Housing Allowance", cell_style), Paragraph(f"{housing:,.2f}", cell_style),
+            Paragraph("Other Deductions", cell_style), Paragraph(f"{other_ded:,.2f}", cell_style)
         ],
         [
-            Paragraph("Transportation Allowance (بدل نقل)", cell_style), Paragraph(f"{transport:,.2f}", cell_style),
-            Paragraph("", cell_style), Paragraph("", cell_style)
+            Paragraph("Transportation Allowance", cell_style), Paragraph(f"{transport:,.2f}", cell_style),
+            Paragraph("-", cell_style), Paragraph("-", cell_style)
         ],
         [
-            Paragraph("Other Allowances (بدلات أخرى)", cell_style), Paragraph(f"{other_allow:,.2f}", cell_style),
-            Paragraph("", cell_style), Paragraph("", cell_style)
+            Paragraph("Other Allowances", cell_style), Paragraph(f"{other_allow:,.2f}", cell_style),
+            Paragraph("-", cell_style), Paragraph("-", cell_style)
         ],
         [
             Paragraph("<b>Total Gross Earnings:</b>", cell_bold), Paragraph(f"<b>SAR {gross:,.2f}</b>", cell_bold),
@@ -171,7 +174,6 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     fin_table = Table(financial_data, colWidths=[2.2*inch, 1.4*inch, 2.2*inch, 1.4*inch])
     fin_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
         ('BACKGROUND', (0,5), (-1,5), colors.HexColor('#F3F4F6')),
@@ -180,20 +182,12 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         ('LEFTPADDING', (0,0), (-1,-1), 8),
         ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
-    
-    fin_table.setStyle(TableStyle([
-        ('TEXTCOLOR', (0,0), (0,0), colors.white),
-        ('TEXTCOLOR', (1,0), (1,0), colors.white),
-        ('TEXTCOLOR', (2,0), (2,0), colors.white),
-        ('TEXTCOLOR', (3,0), (3,0), colors.white),
-    ]))
-    
     elements.append(fin_table)
     elements.append(Spacer(1, 15))
     
     net_box_data = [
         [
-            Paragraph("<b>NET SALARY PAYABLE (صافي الراتب):</b>", ParagraphStyle('NetLbl', parent=cell_bold, fontSize=12, textColor=colors.HexColor('#0B5D34'))),
+            Paragraph("<b>NET SALARY PAYABLE:</b>", ParagraphStyle('NetLbl', parent=cell_bold, fontSize=12, textColor=colors.HexColor('#0B5D34'))),
             Paragraph(f"<b>SAR {net_pay:,.2f}</b>", ParagraphStyle('NetVal', parent=cell_bold, fontSize=14, textColor=colors.HexColor('#006C35'), alignment=2))
         ]
     ]
@@ -207,11 +201,11 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
         ('RIGHTPADDING', (0,0), (-1,-1), 12),
     ]))
     elements.append(net_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 12))
     
-    gosi_info_p = Paragraph(f"<font size=8 color='#6B7280'>* Note: Employer GOSI Contribution for this period: SAR {gosi_empr:,.2f}. (Calculated per Saudi GOSI Regulations).</font>", cell_style)
+    gosi_info_p = Paragraph(f"<font size=8 color='#6B7280'>* Employer GOSI Contribution for this period: SAR {gosi_empr:,.2f} (Computed per Saudi GOSI Regulations).</font>", cell_style)
     elements.append(gosi_info_p)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 25))
     
     sig_data = [
         [
@@ -219,7 +213,7 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
             Paragraph("<b>Employee Acknowledgment</b>", cell_style)
         ],
         [
-            Paragraph("<br/><br/>____________________________________<br/>Al-Amal Enterprise HR Department", subtitle_style),
+            Paragraph("<br/><br/>____________________________________<br/>HR & Payroll Department", subtitle_style),
             Paragraph("<br/><br/>____________________________________<br/>Signature & Date", subtitle_style)
         ]
     ]
@@ -259,7 +253,7 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
         fontSize=18,
         leading=22,
         textColor=colors.HexColor('#006C35'),
-        alignment=0
+        alignment=2
     )
     
     subtitle_style = ParagraphStyle(
@@ -305,12 +299,12 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     
     header_data = [
         [
-            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | Riyadh, KSA</font>", subtitle_style),
-            Paragraph("<b>SUPPLIER PAYMENT STATEMENT</b><br/><font size=9 color='#006C35'>كشف حساب المورد</font>", title_style)
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | Riyadh, Saudi Arabia</font>", subtitle_style),
+            Paragraph("<b>SUPPLIER STATEMENT</b><br/><font size=9 color='#006C35'>Accounts Payable Voucher</font>", title_style)
         ]
     ]
     
-    header_table = Table(header_data, colWidths=[4.0*inch, 3.2*inch])
+    header_table = Table(header_data, colWidths=[4.2*inch, 3.0*inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
@@ -319,9 +313,9 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     elements.append(Spacer(1, 10))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=15))
     
-    total_amt = sp.get("amount", 0.0)
-    paid_amt = sp.get("paid_amount", 0.0)
-    rem_amt = sp.get("remaining_amount", total_amt - paid_amt)
+    total_amt = float(sp.get("amount", 0.0))
+    paid_amt = float(sp.get("paid_amount", 0.0))
+    rem_amt = float(sp.get("remaining_amount", max(0.0, total_amt - paid_amt)))
     
     inv_info_data = [
         [
@@ -358,13 +352,13 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     # Financial Balance Box
     bal_data = [
         [
-            Paragraph("<b>Total Invoice Amount:</b>", cell_bold), Paragraph(f"SAR {total_amt:,.2f}", cell_style),
-            Paragraph("<b>Total Amount Paid:</b>", cell_bold), Paragraph(f"SAR {paid_amt:,.2f}", cell_style),
-            Paragraph("<b>Outstanding Balance:</b>", ParagraphStyle('BalL', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
-            Paragraph(f"<b>SAR {rem_amt:,.2f}</b>", ParagraphStyle('BalV', parent=cell_bold, textColor=colors.HexColor('#EF4444'), fontSize=11))
+            Paragraph("<b>Total Billed:</b>", cell_bold), Paragraph(f"SAR {total_amt:,.2f}", cell_style),
+            Paragraph("<b>Total Paid:</b>", cell_bold), Paragraph(f"SAR {paid_amt:,.2f}", cell_style),
+            Paragraph("<b>Balance Due:</b>", ParagraphStyle('BalL', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
+            Paragraph(f"<b>SAR {rem_amt:,.2f}</b>", ParagraphStyle('BalV', parent=cell_bold, textColor=colors.HexColor('#EF4444'), fontSize=10))
         ]
     ]
-    bal_table = Table(bal_data, colWidths=[1.4*inch, 1.0*inch, 1.4*inch, 1.0*inch, 1.4*inch, 1.0*inch])
+    bal_table = Table(bal_data, colWidths=[1.3*inch, 1.1*inch, 1.3*inch, 1.1*inch, 1.3*inch, 1.1*inch])
     bal_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FEF2F2')),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#FCA5A5')),
@@ -382,16 +376,16 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     
     log_rows = [
         [
-            Paragraph("<b>Date</b>", cell_bold),
-            Paragraph("<b>Payment Method</b>", cell_bold),
-            Paragraph("<b>Reference #</b>", cell_bold),
-            Paragraph("<b>Notes / Details</b>", cell_bold),
-            Paragraph("<b>Amount Paid (SAR)</b>", cell_bold)
+            Paragraph("<font color='white'><b>Date</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Payment Method</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Reference #</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Notes / Details</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Amount Paid (SAR)</b></font>", cell_bold)
         ]
     ]
     
     if not payment_logs:
-        log_rows.append([Paragraph("No payment transactions recorded yet.", cell_style), "", "", "", ""])
+        log_rows.append([Paragraph("No payment transactions recorded yet.", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("SAR 0.00", cell_style)])
     else:
         for lg in payment_logs:
             log_rows.append([
@@ -399,13 +393,12 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
                 Paragraph(str(lg.get("payment_method", "Bank Transfer")), cell_style),
                 Paragraph(str(lg.get("reference_number", "N/A")), cell_style),
                 Paragraph(str(lg.get("notes", "N/A")), cell_style),
-                Paragraph(f"<b>SAR {lg.get('payment_amount', 0.0):,.2f}</b>", cell_style)
+                Paragraph(f"<b>SAR {float(lg.get('payment_amount', 0.0)):,.2f}</b>", cell_style)
             ])
             
     history_table = Table(log_rows, colWidths=[1.1*inch, 1.4*inch, 1.3*inch, 2.0*inch, 1.4*inch])
     history_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
         ('TOPPADDING', (0,0), (-1,-1), 6),
@@ -413,17 +406,8 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
         ('LEFTPADDING', (0,0), (-1,-1), 8),
         ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
-    
-    history_table.setStyle(TableStyle([
-        ('TEXTCOLOR', (0,0), (0,0), colors.white),
-        ('TEXTCOLOR', (1,0), (1,0), colors.white),
-        ('TEXTCOLOR', (2,0), (2,0), colors.white),
-        ('TEXTCOLOR', (3,0), (3,0), colors.white),
-        ('TEXTCOLOR', (4,0), (4,0), colors.white),
-    ]))
-    
     elements.append(history_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 25))
     
     sig_data = [
         [
@@ -431,7 +415,7 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
             Paragraph("<b>Vendor Acknowledgment</b>", cell_style)
         ],
         [
-            Paragraph("<br/><br/>____________________________________<br/>Al-Amal Enterprise Finance Dept", subtitle_style),
+            Paragraph("<br/><br/>____________________________________<br/>Finance Department", subtitle_style),
             Paragraph("<br/><br/>____________________________________<br/>Authorized Representative", subtitle_style)
         ]
     ]

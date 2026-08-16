@@ -5,15 +5,20 @@ from datetime import datetime, date, timedelta
 sys.path.append(os.path.dirname(__file__))
 
 import database_cloud as db
-from saudi_hr_engine import SaudiHREngine
 
 def seed_database():
-    print("Initializing Database Schema...")
+    print("Initializing Database Schema & Indexes...")
     db.init_db()
     
     existing_emps = db.query_all("SELECT COUNT(*) as cnt FROM employees")
     if existing_emps and existing_emps[0]["cnt"] > 0:
-        print("Database already contains records. Skipping seeder.")
+        print("Database already contains records. Verifying data integrity...")
+        # Auto-correct any legacy records with 0.0 remaining amounts on non-paid status
+        db.execute_cmd("""
+            UPDATE supplier_payments 
+            SET remaining_amount = amount - paid_amount 
+            WHERE remaining_amount = 0 AND status != 'Paid' AND amount > paid_amount
+        """)
         return
         
     print("Seeding Departments...")
@@ -155,6 +160,8 @@ def seed_database():
             "invoice_details": "Supply of ergonomic office desks, chairs, and paper supplies",
             "supply_date": (today - timedelta(days=18)).strftime("%Y-%m-%d"),
             "amount": 18500.00,
+            "paid_amount": 0.0,
+            "remaining_amount": 18500.00,
             "status": "Pending",
             "remarks": "Net 30 days payment term"
         },
@@ -166,8 +173,10 @@ def seed_database():
             "invoice_details": "High-performance developer laptops and server racks",
             "supply_date": (today - timedelta(days=48)).strftime("%Y-%m-%d"),
             "amount": 42000.00,
-            "status": "Approved",
-            "remarks": "Overdue payment - scheduled for immediate transfer"
+            "paid_amount": 10000.00,
+            "remaining_amount": 32000.00,
+            "status": "Partially Paid",
+            "remarks": "Advance paid SAR 10,000. Remainder scheduled for transfer."
         },
         {
             "company_name": "Riyadh Logistics & Warehousing",
@@ -177,6 +186,8 @@ def seed_database():
             "invoice_details": "Freight handling, customs clearance, and courier services",
             "supply_date": (today - timedelta(days=78)).strftime("%Y-%m-%d"),
             "amount": 12800.00,
+            "paid_amount": 0.0,
+            "remaining_amount": 12800.00,
             "status": "Pending",
             "remarks": "Awaiting finance manager final signoff"
         },
@@ -188,6 +199,8 @@ def seed_database():
             "invoice_details": "Monthly facility maintenance and HVAC servicing",
             "supply_date": (today - timedelta(days=58)).strftime("%Y-%m-%d"),
             "amount": 15000.00,
+            "paid_amount": 15000.00,
+            "remaining_amount": 0.0,
             "status": "Paid",
             "payment_date": (today - timedelta(days=5)).strftime("%Y-%m-%d"),
             "remarks": "Settled via Riyad Bank corporate transfer"
@@ -195,16 +208,27 @@ def seed_database():
     ]
 
     for sp in suppliers:
-        db.execute_cmd("""
+        sp_id = db.execute_cmd("""
             INSERT INTO supplier_payments (
                 company_name, invoice_number, invoice_date, due_date, invoice_details,
-                supply_date, amount, status, payment_date, remarks, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                supply_date, amount, paid_amount, remaining_amount, status, payment_date, remarks, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             sp["company_name"], sp["invoice_number"], sp["invoice_date"], sp["due_date"],
-            sp["invoice_details"], sp["supply_date"], sp["amount"], sp["status"],
-            sp.get("payment_date"), sp["remarks"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sp["invoice_details"], sp["supply_date"], sp["amount"], sp["paid_amount"],
+            sp["remaining_amount"], sp["status"], sp.get("payment_date"), sp["remarks"],
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
+        
+        if sp["paid_amount"] > 0:
+            db.execute_cmd("""
+                INSERT INTO supplier_payment_logs (
+                    supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                sp_id, sp["paid_amount"], sp.get("payment_date") or (today - timedelta(days=10)).strftime("%Y-%m-%d"),
+                "Bank Transfer", f"INIT-{sp_id}", "Initial settlement disbursement", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
 
     print("Database seeding completed successfully!")
 

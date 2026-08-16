@@ -1,5 +1,7 @@
 import os
 import uuid
+import json
+import zipfile
 import shutil
 import tempfile
 from datetime import datetime, date
@@ -14,25 +16,26 @@ from PIL import Image
 
 import database_cloud as db
 import auth
-from google_drive_backup import generate_full_backup_archive
+from google_drive_backup import generate_full_backup_archive, restore_from_backup_dict
 from models import (
-    DepartmentCreate, EmployeeCreate, LeaveCreate, LeaveStatusUpdate,
-    EOSBRequest, GOSIRequest, PayrollRunRequest,
-    SupplierPaymentCreate, SupplierPaymentStatusUpdate, SupplierDisburseRequest
+    DepartmentCreate, DepartmentUpdate, EmployeeCreate, EmployeeUpdate,
+    LeaveCreate, LeaveStatusUpdate, EOSBRequest, GOSIRequest, PayrollRunRequest,
+    SupplierPaymentCreate, SupplierPaymentStatusUpdate, SupplierDisburseRequest,
+    BackupRestoreRequest
 )
 from saudi_hr_engine import SaudiHREngine
 from pdf_generator import generate_payslip_pdf, generate_supplier_statement_pdf
 
-# Initialize DB
+# Initialize DB schema & indexes
 db.init_db()
 
 app = FastAPI(
     title="Saudi HR & SME Finance ERP System",
-    description="Production-grade Saudi HR, Payroll & Finance ERP System with Accounts Payable, Vendor Ledgers, and PDF Export",
+    description="Production-grade Saudi HR, Payroll & Finance ERP System with Accounts Payable, Vendor Ledgers, and SAMA WPS Engine",
     version="3.4.0"
 )
 
-# Enable CORS for local & Vercel access
+# Enable CORS for web portal
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,21 +46,27 @@ app.add_middleware(
 
 BASE_DIR = os.path.dirname(__file__)
 
-if os.environ.get("VERCEL"):
+if db.is_vercel():
     UPLOADS_PHOTOS_DIR = os.path.join(tempfile.gettempdir(), "photos")
     UPLOADS_DOCS_DIR = os.path.join(tempfile.gettempdir(), "documents")
+    UPLOADS_BACKUPS_DIR = os.path.join(tempfile.gettempdir(), "backups")
 else:
     UPLOADS_PHOTOS_DIR = os.path.join(BASE_DIR, "uploads", "photos")
     UPLOADS_DOCS_DIR = os.path.join(BASE_DIR, "uploads", "documents")
+    UPLOADS_BACKUPS_DIR = os.path.join(BASE_DIR, "uploads", "backups")
 
 os.makedirs(UPLOADS_PHOTOS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DOCS_DIR, exist_ok=True)
+os.makedirs(UPLOADS_BACKUPS_DIR, exist_ok=True)
 
-# Mount static files
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# Mount static and uploads
+static_dir = os.path.join(BASE_DIR, "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-if os.path.exists(os.path.join(BASE_DIR, "uploads")):
-    app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
+uploads_dir = os.path.join(BASE_DIR, "uploads")
+if os.path.exists(uploads_dir):
+    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 class LoginRequest(BaseModel):
     email: str
@@ -93,14 +102,14 @@ def require_roles(allowed_roles: List[str]):
         return user
     return role_checker
 
-# --- UI Route ---
+# --- UI Root Route ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     index_path = os.path.join(BASE_DIR, "static", "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return f.read()
-    return "<h1>Saudi HR ERP System Production Running</h1>"
+    return "<h1>Saudi HR ERP System Running</h1>"
 
 # --- Authentication & User Management Endpoints ---
 @app.post("/api/auth/login")
@@ -155,6 +164,11 @@ def update_user_account(user_id: int, req: UserUpdateRequest, user: dict = Depen
     if not existing:
         raise HTTPException(status_code=404, detail="User account not found.")
         
+    # Check duplicate email
+    dup = db.query_one("SELECT id FROM users WHERE email = ? AND id != ?", (req.email, user_id))
+    if dup:
+        raise HTTPException(status_code=400, detail="Email address is already in use by another user.")
+        
     if req.password and req.password.strip():
         hashed_pwd = auth.hash_password(req.password.strip())
         db.execute_cmd("""
@@ -174,6 +188,357 @@ def delete_user_account(user_id: int, user: dict = Depends(require_roles(["admin
         
     db.execute_cmd("DELETE FROM users WHERE id = ?", (user_id,))
     return {"message": "User account deleted successfully"}
+
+# --- Dashboard Overview Endpoint ---
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(user: dict = Depends(get_current_user)):
+    employees = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
+    total_emp = len(employees)
+    saudi_emp = sum(1 for e in employees if e["is_saudi"] == 1)
+    expat_emp = total_emp - saudi_emp
+    
+    saudization_info = SaudiHREngine.calculate_saudization(total_emp, saudi_emp)
+    total_payroll = sum((e["basic_salary"] + e["housing_allowance"] + e["transport_allowance"] + e["other_allowances"]) for e in employees)
+    
+    pending_leaves_row = db.query_one("SELECT COUNT(*) as cnt FROM leaves WHERE status = 'Pending'")
+    pending_leaves = pending_leaves_row["cnt"] if pending_leaves_row else 0
+    
+    alerts = SaudiHREngine.check_expiries(employees, threshold_days=60)
+    
+    depts = db.query_all("""
+        SELECT d.name, COUNT(e.id) as emp_count
+        FROM departments d
+        LEFT JOIN employees e ON d.id = e.department_id AND e.status = 'Active'
+        GROUP BY d.id
+    """)
+    
+    pending_sp_row = db.query_one("SELECT SUM(remaining_amount) as tot FROM supplier_payments WHERE status != 'Paid'")
+    pending_supplier_pay = float(pending_sp_row["tot"]) if pending_sp_row and pending_sp_row["tot"] is not None else 0.0
+    
+    return {
+        "total_employees": total_emp,
+        "saudi_employees": saudi_emp,
+        "expat_employees": expat_emp,
+        "saudization": saudization_info,
+        "total_monthly_payroll": total_payroll if user["role"] in ["admin", "hr_manager"] else 0.0,
+        "pending_supplier_payables": pending_supplier_pay if user["role"] in ["admin", "hr_manager"] else 0.0,
+        "pending_leaves_count": pending_leaves,
+        "expiring_alerts_count": len(alerts),
+        "alerts_summary": alerts[:5],
+        "department_distribution": depts
+    }
+
+# --- Departments Endpoints ---
+@app.get("/api/departments")
+def get_departments(user: dict = Depends(get_current_user)):
+    return db.query_all("""
+        SELECT d.*, COUNT(e.id) as employee_count 
+        FROM departments d 
+        LEFT JOIN employees e ON d.id = e.department_id AND e.status = 'Active'
+        GROUP BY d.id
+        ORDER BY d.name ASC
+    """)
+
+@app.post("/api/departments")
+def create_department(dept: DepartmentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM departments WHERE code = ?", (dept.code,))
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Department with code '{dept.code}' already exists.")
+        
+    d_id = db.execute_cmd(
+        "INSERT INTO departments (name, code, manager_name, budget) VALUES (?, ?, ?, ?)",
+        (dept.name, dept.code, dept.manager_name, dept.budget or 0.0)
+    )
+    return {"message": "Department created successfully", "id": d_id}
+
+@app.put("/api/departments/{dept_id}")
+def update_department(dept_id: int, dept: DepartmentUpdate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM departments WHERE id = ?", (dept_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Department not found.")
+        
+    dup = db.query_one("SELECT id FROM departments WHERE code = ? AND id != ?", (dept.code, dept_id))
+    if dup:
+        raise HTTPException(status_code=400, detail=f"Department code '{dept.code}' is already used by another department.")
+        
+    db.execute_cmd("""
+        UPDATE departments SET name = ?, code = ?, manager_name = ?, budget = ? WHERE id = ?
+    """, (dept.name, dept.code, dept.manager_name, dept.budget or 0.0, dept_id))
+    return {"message": "Department updated successfully"}
+
+@app.delete("/api/departments/{dept_id}")
+def delete_department(dept_id: int, user: dict = Depends(require_roles(["admin"]))):
+    existing = db.query_one("SELECT id FROM departments WHERE id = ?", (dept_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Department not found.")
+        
+    db.execute_cmd("UPDATE employees SET department_id = NULL WHERE department_id = ?", (dept_id,))
+    db.execute_cmd("DELETE FROM departments WHERE id = ?", (dept_id,))
+    return {"message": "Department deleted successfully"}
+
+# --- Employee Endpoints ---
+@app.get("/api/employees")
+def list_employees(
+    search: Optional[str] = None,
+    department_id: Optional[int] = None,
+    is_saudi: Optional[int] = None,
+    status: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    sql = """
+        SELECT e.*, d.name as department_name 
+        FROM employees e 
+        LEFT JOIN departments d ON e.department_id = d.id 
+        WHERE 1=1
+    """
+    params = []
+    
+    if search:
+        sql += " AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.emp_code LIKE ? OR e.national_id_iqama LIKE ? OR e.email LIKE ?)"
+        pattern = f"%{search}%"
+        params.extend([pattern, pattern, pattern, pattern, pattern])
+        
+    if department_id:
+        sql += " AND e.department_id = ?"
+        params.append(department_id)
+        
+    if is_saudi is not None:
+        sql += " AND e.is_saudi = ?"
+        params.append(is_saudi)
+        
+    if status:
+        sql += " AND e.status = ?"
+        params.append(status)
+        
+    sql += " ORDER BY e.id DESC"
+    results = db.query_all(sql, tuple(params))
+    
+    if user["role"] == "viewer":
+        for r in results:
+            r["basic_salary"] = 0.0
+            r["housing_allowance"] = 0.0
+            r["transport_allowance"] = 0.0
+            r["other_allowances"] = 0.0
+            
+    return results
+
+@app.post("/api/employees")
+def create_employee(emp: EmployeeCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM employees WHERE emp_code = ? OR national_id_iqama = ? OR email = ?", (emp.emp_code, emp.national_id_iqama, emp.email))
+    if existing:
+        raise HTTPException(status_code=400, detail="Employee Code, Iqama/National ID, or Email already exists in the system.")
+        
+    e_id = db.execute_cmd("""
+        INSERT INTO employees (
+            emp_code, first_name, last_name, arabic_name, email, phone,
+            national_id_iqama, nationality, gender, is_saudi, dob,
+            department_id, designation, hire_date, contract_type, contract_end_date,
+            iqama_expiry_date, passport_number, passport_expiry_date, bank_name,
+            iban, basic_salary, housing_allowance, transport_allowance, other_allowances,
+            gosi_number, status
+        ) VALUES (
+            :emp_code, :first_name, :last_name, :arabic_name, :email, :phone,
+            :national_id_iqama, :nationality, :gender, :is_saudi, :dob,
+            :department_id, :designation, :hire_date, :contract_type, :contract_end_date,
+            :iqama_expiry_date, :passport_number, :passport_expiry_date, :bank_name,
+            :iban, :basic_salary, :housing_allowance, :transport_allowance, :other_allowances,
+            :gosi_number, :status
+        )
+    """, emp.dict())
+    return {"message": "Employee profile created successfully", "id": e_id}
+
+@app.get("/api/employees/{emp_id}")
+def get_employee_detail(emp_id: int, user: dict = Depends(get_current_user)):
+    emp = db.query_one("""
+        SELECT e.*, d.name as department_name 
+        FROM employees e 
+        LEFT JOIN departments d ON e.department_id = d.id 
+        WHERE e.id = ?
+    """, (emp_id,))
+    
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    if user["role"] == "viewer":
+        emp["basic_salary"] = 0.0
+        emp["housing_allowance"] = 0.0
+        emp["transport_allowance"] = 0.0
+        emp["other_allowances"] = 0.0
+        
+    documents = db.query_all("SELECT * FROM documents WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
+    leaves = db.query_all("SELECT * FROM leaves WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
+    payroll_history = db.query_all("""
+        SELECT pd.*, pr.payroll_month, pr.payroll_year, pr.processed_at 
+        FROM payroll_details pd 
+        JOIN payroll_runs pr ON pd.payroll_run_id = pr.id 
+        WHERE pd.employee_id = ? 
+        ORDER BY pr.id DESC
+    """, (emp_id,)) if user["role"] in ["admin", "hr_manager"] else []
+    
+    gosi_info = SaudiHREngine.calculate_gosi(
+        emp["is_saudi"] == 1,
+        emp["basic_salary"],
+        emp["housing_allowance"]
+    )
+    
+    return {
+        "employee": emp,
+        "documents": documents,
+        "leaves": leaves,
+        "payroll_history": payroll_history,
+        "gosi_breakdown": gosi_info
+    }
+
+@app.put("/api/employees/{emp_id}")
+def update_employee(emp_id: int, emp: EmployeeUpdate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    # Prevent duplicate code, national ID, or email across OTHER employees
+    dup = db.query_one("""
+        SELECT id FROM employees 
+        WHERE (emp_code = ? OR national_id_iqama = ? OR email = ?) AND id != ?
+    """, (emp.emp_code, emp.national_id_iqama, emp.email, emp_id))
+    if dup:
+        raise HTTPException(status_code=400, detail="Employee Code, Iqama/National ID, or Email is already registered to another employee.")
+        
+    data = emp.dict()
+    data["id"] = emp_id
+    
+    db.execute_cmd("""
+        UPDATE employees SET
+            emp_code = :emp_code,
+            first_name = :first_name,
+            last_name = :last_name,
+            arabic_name = :arabic_name,
+            email = :email,
+            phone = :phone,
+            national_id_iqama = :national_id_iqama,
+            nationality = :nationality,
+            gender = :gender,
+            is_saudi = :is_saudi,
+            dob = :dob,
+            department_id = :department_id,
+            designation = :designation,
+            hire_date = :hire_date,
+            contract_type = :contract_type,
+            contract_end_date = :contract_end_date,
+            iqama_expiry_date = :iqama_expiry_date,
+            passport_number = :passport_number,
+            passport_expiry_date = :passport_expiry_date,
+            bank_name = :bank_name,
+            iban = :iban,
+            basic_salary = :basic_salary,
+            housing_allowance = :housing_allowance,
+            transport_allowance = :transport_allowance,
+            other_allowances = :other_allowances,
+            gosi_number = :gosi_number,
+            status = :status
+        WHERE id = :id
+    """, data)
+    return {"message": "Employee profile updated successfully"}
+
+@app.delete("/api/employees/{emp_id}")
+def delete_employee(emp_id: int, user: dict = Depends(require_roles(["admin"]))):
+    existing = db.query_one("SELECT id, first_name, last_name FROM employees WHERE id = ?", (emp_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    db.execute_cmd("DELETE FROM employees WHERE id = ?", (emp_id,))
+    return {"message": f"Employee {existing['first_name']} {existing['last_name']} removed successfully"}
+
+# --- Image & Document Endpoints ---
+@app.post("/api/employees/{emp_id}/photo")
+async def upload_employee_photo(emp_id: int, file: UploadFile = File(...), user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+        raise HTTPException(status_code=400, detail="Invalid image format. Allowed: JPG, PNG, WEBP")
+        
+    unique_filename = f"emp_{emp_id}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = os.path.join(UPLOADS_PHOTOS_DIR, unique_filename)
+    
+    try:
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+            
+        try:
+            with Image.open(file_path) as im:
+                im.thumbnail((400, 400))
+                im.save(file_path)
+        except Exception:
+            pass
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process image upload: {str(e)}")
+        
+    db.execute_cmd("UPDATE employees SET photo_filename = ? WHERE id = ?", (f"photos/{unique_filename}", emp_id))
+    return {"message": "Employee photo uploaded successfully", "photo_url": f"/uploads/photos/{unique_filename}"}
+
+@app.post("/api/employees/{emp_id}/documents")
+async def upload_employee_document(
+    emp_id: int,
+    doc_type: str = Form(...),
+    notes: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    ext = os.path.splitext(file.filename)[1].lower()
+    unique_filename = f"doc_emp_{emp_id}_{uuid.uuid4().hex[:8]}{ext}"
+    saved_path = os.path.join(UPLOADS_DOCS_DIR, unique_filename)
+    rel_path = f"uploads/documents/{unique_filename}"
+    
+    try:
+        contents = await file.read()
+        with open(saved_path, "wb") as buffer:
+            buffer.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file upload: {str(e)}")
+        
+    doc_id = db.execute_cmd("""
+        INSERT INTO documents (employee_id, doc_type, file_name, file_path, upload_date, expiry_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (emp_id, doc_type, file.filename, rel_path, date.today().strftime("%Y-%m-%d"), expiry_date, notes))
+    
+    return {"message": "Document uploaded successfully", "document_id": doc_id, "file_name": file.filename}
+
+@app.delete("/api/documents/{doc_id}")
+def delete_document(doc_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    doc = db.query_one("SELECT * FROM documents WHERE id = ?", (doc_id,))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+        
+    full_path = os.path.join(BASE_DIR, doc["file_path"])
+    if os.path.exists(full_path):
+        try:
+            os.remove(full_path)
+        except Exception:
+            pass
+            
+    db.execute_cmd("DELETE FROM documents WHERE id = ?", (doc_id,))
+    return {"message": "Document deleted successfully"}
+
+@app.get("/api/documents/{doc_id}/download")
+def download_document(doc_id: int, user: dict = Depends(get_current_user)):
+    doc = db.query_one("SELECT * FROM documents WHERE id = ?", (doc_id,))
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document record not found.")
+        
+    full_path = os.path.join(BASE_DIR, doc["file_path"])
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="Document file does not exist on disk.")
+        
+    return FileResponse(full_path, filename=doc["file_name"])
 
 # --- Robust Supplier Payment & Vendor Ledger Endpoints ---
 @app.get("/api/suppliers/payments")
@@ -409,7 +774,7 @@ def get_finance_analytics(user: dict = Depends(require_roles(["admin", "hr_manag
         "vendor_invoices_count": len(supplier_payments)
     }
 
-# --- Automated Google Drive Backup Endpoint ---
+# --- Automated Backup & Restoration Endpoints ---
 @app.post("/api/backup/google-drive")
 def trigger_google_drive_backup(user: dict = Depends(require_roles(["admin"]))):
     try:
@@ -428,290 +793,35 @@ def trigger_google_drive_backup(user: dict = Depends(require_roles(["admin"]))):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backup generation failed: {str(e)}")
 
-# --- Dashboard Overview Endpoint ---
-@app.get("/api/dashboard/stats")
-def get_dashboard_stats(user: dict = Depends(get_current_user)):
-    employees = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
-    total_emp = len(employees)
-    saudi_emp = sum(1 for e in employees if e["is_saudi"] == 1)
-    expat_emp = total_emp - saudi_emp
-    
-    saudization_info = SaudiHREngine.calculate_saudization(total_emp, saudi_emp)
-    total_payroll = sum((e["basic_salary"] + e["housing_allowance"] + e["transport_allowance"] + e["other_allowances"]) for e in employees)
-    pending_leaves = db.query_all("SELECT COUNT(*) as cnt FROM leaves WHERE status = 'Pending'")[0]["cnt"]
-    alerts = SaudiHREngine.check_expiries(employees, threshold_days=60)
-    
-    depts = db.query_all("""
-        SELECT d.name, COUNT(e.id) as emp_count
-        FROM departments d
-        LEFT JOIN employees e ON d.id = e.department_id AND e.status = 'Active'
-        GROUP BY d.id
-    """)
-    
-    pending_supplier_pay = db.query_all("SELECT SUM(remaining_amount) as tot FROM supplier_payments WHERE status != 'Paid'")[0]["tot"] or 0.0
-    
-    return {
-        "total_employees": total_emp,
-        "saudi_employees": saudi_emp,
-        "expat_employees": expat_emp,
-        "saudization": saudization_info,
-        "total_monthly_payroll": total_payroll if user["role"] in ["admin", "hr_manager"] else 0.0,
-        "pending_supplier_payables": pending_supplier_pay if user["role"] in ["admin", "hr_manager"] else 0.0,
-        "pending_leaves_count": pending_leaves,
-        "expiring_alerts_count": len(alerts),
-        "alerts_summary": alerts[:5],
-        "department_distribution": depts
-    }
-
-# --- Departments Endpoints ---
-@app.get("/api/departments")
-def get_departments(user: dict = Depends(get_current_user)):
-    return db.query_all("""
-        SELECT d.*, COUNT(e.id) as employee_count 
-        FROM departments d 
-        LEFT JOIN employees e ON d.id = e.department_id AND e.status = 'Active'
-        GROUP BY d.id
-    """)
-
-@app.post("/api/departments")
-def create_department(dept: DepartmentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
-    d_id = db.execute_cmd(
-        "INSERT INTO departments (name, code, manager_name, budget) VALUES (?, ?, ?, ?)",
-        (dept.name, dept.code, dept.manager_name, dept.budget)
-    )
-    return {"message": "Department created successfully", "id": d_id}
-
-# --- Employee Endpoints ---
-@app.get("/api/employees")
-def list_employees(
-    search: Optional[str] = None,
-    department_id: Optional[int] = None,
-    is_saudi: Optional[int] = None,
-    status: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+@app.post("/api/backup/restore")
+async def restore_system_backup(
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles(["admin"]))
 ):
-    sql = """
-        SELECT e.*, d.name as department_name 
-        FROM employees e 
-        LEFT JOIN departments d ON e.department_id = d.id 
-        WHERE 1=1
-    """
-    params = []
-    
-    if search:
-        sql += " AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.emp_code LIKE ? OR e.national_id_iqama LIKE ?)"
-        pattern = f"%{search}%"
-        params.extend([pattern, pattern, pattern, pattern])
-        
-    if department_id:
-        sql += " AND e.department_id = ?"
-        params.append(department_id)
-        
-    if is_saudi is not None:
-        sql += " AND e.is_saudi = ?"
-        params.append(is_saudi)
-        
-    if status:
-        sql += " AND e.status = ?"
-        params.append(status)
-        
-    sql += " ORDER BY e.id DESC"
-    results = db.query_all(sql, tuple(params))
-    
-    if user["role"] == "viewer":
-        for r in results:
-            r["basic_salary"] = 0.0
-            r["housing_allowance"] = 0.0
-            r["transport_allowance"] = 0.0
-            r["other_allowances"] = 0.0
-            
-    return results
-
-@app.post("/api/employees")
-def create_employee(emp: EmployeeCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
-    existing = db.query_one("SELECT id FROM employees WHERE emp_code = ? OR national_id_iqama = ?", (emp.emp_code, emp.national_id_iqama))
-    if existing:
-        raise HTTPException(status_code=400, detail="Employee Code or Iqama/National ID already exists.")
-        
-    e_id = db.execute_cmd("""
-        INSERT INTO employees (
-            emp_code, first_name, last_name, arabic_name, email, phone,
-            national_id_iqama, nationality, gender, is_saudi, dob,
-            department_id, designation, hire_date, contract_type, contract_end_date,
-            iqama_expiry_date, passport_number, passport_expiry_date, bank_name,
-            iban, basic_salary, housing_allowance, transport_allowance, other_allowances,
-            gosi_number, status
-        ) VALUES (
-            :emp_code, :first_name, :last_name, :arabic_name, :email, :phone,
-            :national_id_iqama, :nationality, :gender, :is_saudi, :dob,
-            :department_id, :designation, :hire_date, :contract_type, :contract_end_date,
-            :iqama_expiry_date, :passport_number, :passport_expiry_date, :bank_name,
-            :iban, :basic_salary, :housing_allowance, :transport_allowance, :other_allowances,
-            :gosi_number, :status
-        )
-    """, emp.dict())
-    return {"message": "Employee created successfully", "id": e_id}
-
-@app.get("/api/employees/{emp_id}")
-def get_employee_detail(emp_id: int, user: dict = Depends(get_current_user)):
-    emp = db.query_one("""
-        SELECT e.*, d.name as department_name 
-        FROM employees e 
-        LEFT JOIN departments d ON e.department_id = d.id 
-        WHERE e.id = ?
-    """, (emp_id,))
-    
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found.")
-        
-    if user["role"] == "viewer":
-        emp["basic_salary"] = 0.0
-        emp["housing_allowance"] = 0.0
-        emp["transport_allowance"] = 0.0
-        emp["other_allowances"] = 0.0
-        
-    documents = db.query_all("SELECT * FROM documents WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
-    leaves = db.query_all("SELECT * FROM leaves WHERE employee_id = ? ORDER BY id DESC", (emp_id,))
-    payroll_history = db.query_all("""
-        SELECT pd.*, pr.payroll_month, pr.payroll_year, pr.processed_at 
-        FROM payroll_details pd 
-        JOIN payroll_runs pr ON pd.payroll_run_id = pr.id 
-        WHERE pd.employee_id = ? 
-        ORDER BY pr.id DESC
-    """, (emp_id,)) if user["role"] in ["admin", "hr_manager"] else []
-    
-    gosi_info = SaudiHREngine.calculate_gosi(
-        emp["is_saudi"] == 1,
-        emp["basic_salary"],
-        emp["housing_allowance"]
-    )
-    
-    return {
-        "employee": emp,
-        "documents": documents,
-        "leaves": leaves,
-        "payroll_history": payroll_history,
-        "gosi_breakdown": gosi_info
-    }
-
-@app.put("/api/employees/{emp_id}")
-def update_employee(emp_id: int, emp: EmployeeCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
-    existing = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
-    if not existing:
-        raise HTTPException(status_code=404, detail="Employee not found.")
-        
-    data = emp.dict()
-    data["id"] = emp_id
-    
-    db.execute_cmd("""
-        UPDATE employees SET
-            emp_code = :emp_code,
-            first_name = :first_name,
-            last_name = :last_name,
-            arabic_name = :arabic_name,
-            email = :email,
-            phone = :phone,
-            national_id_iqama = :national_id_iqama,
-            nationality = :nationality,
-            gender = :gender,
-            is_saudi = :is_saudi,
-            dob = :dob,
-            department_id = :department_id,
-            designation = :designation,
-            hire_date = :hire_date,
-            contract_type = :contract_type,
-            contract_end_date = :contract_end_date,
-            iqama_expiry_date = :iqama_expiry_date,
-            passport_number = :passport_number,
-            passport_expiry_date = :passport_expiry_date,
-            bank_name = :bank_name,
-            iban = :iban,
-            basic_salary = :basic_salary,
-            housing_allowance = :housing_allowance,
-            transport_allowance = :transport_allowance,
-            other_allowances = :other_allowances,
-            gosi_number = :gosi_number,
-            status = :status
-        WHERE id = :id
-    """, data)
-    return {"message": "Employee profile updated successfully"}
-
-# --- Image Upload Endpoint ---
-@app.post("/api/employees/{emp_id}/photo")
-async def upload_employee_photo(emp_id: int, file: UploadFile = File(...), user: dict = Depends(require_roles(["admin", "hr_manager"]))):
-    emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found.")
-        
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-        raise HTTPException(status_code=400, detail="Invalid image format. Allowed: JPG, PNG, WEBP")
-        
-    unique_filename = f"emp_{emp_id}_{uuid.uuid4().hex[:8]}{ext}"
-    file_path = os.path.join(UPLOADS_PHOTOS_DIR, unique_filename)
-    
     try:
-        contents = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(contents)
+        if not file:
+            raise HTTPException(status_code=400, detail="Please provide a backup ZIP or JSON file.")
             
-        try:
-            with Image.open(file_path) as im:
-                im.thumbnail((400, 400))
-                im.save(file_path)
-        except Exception:
-            pass
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process image upload: {str(e)}")
-        
-    db.execute_cmd("UPDATE employees SET photo_filename = ? WHERE id = ?", (f"photos/{unique_filename}", emp_id))
-    return {"message": "Employee photo uploaded successfully", "photo_url": f"/uploads/photos/{unique_filename}"}
-
-# --- Document Upload Endpoint ---
-@app.post("/api/employees/{emp_id}/documents")
-async def upload_employee_document(
-    emp_id: int,
-    doc_type: str = Form(...),
-    notes: Optional[str] = Form(None),
-    expiry_date: Optional[str] = Form(None),
-    file: UploadFile = File(...),
-    user: dict = Depends(require_roles(["admin", "hr_manager"]))
-):
-    emp = db.query_one("SELECT id FROM employees WHERE id = ?", (emp_id,))
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found.")
-        
-    ext = os.path.splitext(file.filename)[1].lower()
-    unique_filename = f"doc_emp_{emp_id}_{uuid.uuid4().hex[:8]}{ext}"
-    saved_path = os.path.join(UPLOADS_DOCS_DIR, unique_filename)
-    rel_path = f"uploads/documents/{unique_filename}"
-    
-    try:
         contents = await file.read()
-        with open(saved_path, "wb") as buffer:
-            buffer.write(contents)
+        filename = file.filename.lower()
+        
+        if filename.endswith(".json"):
+            dump = json.loads(contents.decode("utf-8"))
+        elif filename.endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+                if "database_dump.json" not in zf.namelist():
+                    raise HTTPException(status_code=400, detail="Invalid backup ZIP: 'database_dump.json' not found.")
+                json_bytes = zf.read("database_dump.json")
+                dump = json.loads(json_bytes.decode("utf-8"))
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported backup format. Please upload a .ZIP or .JSON file.")
+            
+        result = restore_from_backup_dict(dump)
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file upload: {str(e)}")
-        
-    doc_id = db.execute_cmd("""
-        INSERT INTO documents (employee_id, doc_type, file_name, file_path, upload_date, expiry_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (emp_id, doc_type, file.filename, rel_path, date.today().strftime("%Y-%m-%d"), expiry_date, notes))
-    
-    return {"message": "Document uploaded successfully", "document_id": doc_id, "file_name": file.filename}
-
-@app.get("/api/documents/{doc_id}/download")
-def download_document(doc_id: int, user: dict = Depends(get_current_user)):
-    doc = db.query_one("SELECT * FROM documents WHERE id = ?", (doc_id,))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document record not found.")
-        
-    full_path = os.path.join(BASE_DIR, doc["file_path"])
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="Document file does not exist on disk.")
-        
-    return FileResponse(full_path, filename=doc["file_name"])
+        raise HTTPException(status_code=500, detail=f"Restore operation failed: {str(e)}")
 
 # --- Payroll Endpoints ---
 @app.get("/api/payroll/runs")
@@ -739,10 +849,10 @@ def generate_monthly_payroll(req: PayrollRunRequest, user: dict = Depends(requir
     """, (req.month, req.year, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     
     for emp in active_emps:
-        basic = emp["basic_salary"]
-        housing = emp["housing_allowance"]
-        transport = emp["transport_allowance"]
-        other = emp["other_allowances"]
+        basic = float(emp["basic_salary"])
+        housing = float(emp["housing_allowance"])
+        transport = float(emp["transport_allowance"])
+        other = float(emp["other_allowances"])
         gross = basic + housing + transport + other
         
         gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, housing)
@@ -773,6 +883,15 @@ def generate_monthly_payroll(req: PayrollRunRequest, user: dict = Depends(requir
     """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
     
     return {"message": "Payroll generated and approved successfully", "payroll_run_id": run_id}
+
+@app.delete("/api/payroll/runs/{run_id}")
+def delete_payroll_run(run_id: int, user: dict = Depends(require_roles(["admin"]))):
+    run = db.query_one("SELECT * FROM payroll_runs WHERE id = ?", (run_id,))
+    if not run:
+        raise HTTPException(status_code=404, detail="Payroll run not found.")
+        
+    db.execute_cmd("DELETE FROM payroll_runs WHERE id = ?", (run_id,))
+    return {"message": f"Payroll run for {run['payroll_month']}/{run['payroll_year']} deleted successfully"}
 
 @app.get("/api/payroll/runs/{run_id}/details")
 def get_payroll_run_details(run_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
@@ -879,6 +998,9 @@ def apply_leave(req: LeaveCreate, user: dict = Depends(get_current_user)):
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found.")
         
+    if req.days <= 0:
+        raise HTTPException(status_code=400, detail="Leave duration must be at least 1 day.")
+        
     l_id = db.execute_cmd("""
         INSERT INTO leaves (employee_id, leave_type, start_date, end_date, days, reason, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)
@@ -888,8 +1010,21 @@ def apply_leave(req: LeaveCreate, user: dict = Depends(get_current_user)):
 
 @app.put("/api/leaves/{leave_id}/status")
 def update_leave_status(leave_id: int, body: LeaveStatusUpdate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM leaves WHERE id = ?", (leave_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Leave application not found.")
+        
     db.execute_cmd("UPDATE leaves SET status = ? WHERE id = ?", (body.status, leave_id))
     return {"message": f"Leave status updated to {body.status}"}
+
+@app.delete("/api/leaves/{leave_id}")
+def delete_leave(leave_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    existing = db.query_one("SELECT id FROM leaves WHERE id = ?", (leave_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Leave record not found.")
+        
+    db.execute_cmd("DELETE FROM leaves WHERE id = ?", (leave_id,))
+    return {"message": "Leave application record removed successfully"}
 
 # --- Saudi Compliance Calculators ---
 @app.post("/api/calculators/eosb")
