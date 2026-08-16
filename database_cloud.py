@@ -119,6 +119,24 @@ def init_db():
     );
     """)
     
+    # Suppliers / Vendors Directory
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        contact_person TEXT,
+        phone TEXT,
+        email TEXT,
+        cr_number TEXT,
+        vat_number TEXT,
+        bank_name TEXT,
+        iban TEXT,
+        payment_terms TEXT DEFAULT 'Net 30',
+        address TEXT,
+        created_at TEXT NOT NULL
+    );
+    """)
+
     # Supplier Payment & Aging Invoice Tracking with Auto-Adjusting Balances
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS supplier_payments (
@@ -240,6 +258,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_company ON supplier_payments(company_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_status ON supplier_payments(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_logs_sp ON supplier_payment_logs(supplier_payment_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);")
     
     # Auto-migration for supply_start_date and supply_end_date
     try:
@@ -253,6 +272,17 @@ def init_db():
     try:
         cursor.execute("UPDATE supplier_payments SET supply_start_date = supply_date WHERE supply_start_date IS NULL AND supply_date IS NOT NULL;")
         cursor.execute("UPDATE supplier_payments SET supply_end_date = supply_date WHERE supply_end_date IS NULL AND supply_date IS NOT NULL;")
+    except Exception:
+        pass
+
+    # Auto-populate suppliers directory from existing payments if not already present
+    try:
+        cursor.execute("""
+            INSERT OR IGNORE INTO suppliers (name, contact_person, payment_terms, created_at)
+            SELECT DISTINCT company_name, 'Account Representative', 'Net 30', datetime('now')
+            FROM supplier_payments
+            WHERE company_name NOT IN (SELECT name FROM suppliers);
+        """)
     except Exception:
         pass
     

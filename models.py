@@ -82,6 +82,30 @@ class LeaveCreate(BaseModel):
 class LeaveStatusUpdate(BaseModel):
     status: str
 
+class SupplierCreate(BaseModel):
+    name: str
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    cr_number: Optional[str] = None
+    vat_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    iban: Optional[str] = None
+    payment_terms: Optional[str] = "Net 30"
+    address: Optional[str] = None
+
+class SupplierUpdate(BaseModel):
+    name: str
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    cr_number: Optional[str] = None
+    vat_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    iban: Optional[str] = None
+    payment_terms: Optional[str] = "Net 30"
+    address: Optional[str] = None
+
 class SupplierPaymentCreate(BaseModel):
     company_name: str
     invoice_number: Optional[str] = None

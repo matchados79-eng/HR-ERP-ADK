@@ -20,11 +20,14 @@ from google_drive_backup import generate_full_backup_archive, restore_from_backu
 from models import (
     DepartmentCreate, DepartmentUpdate, EmployeeCreate, EmployeeUpdate,
     LeaveCreate, LeaveStatusUpdate, EOSBRequest, GOSIRequest, PayrollRunRequest,
-    SupplierPaymentCreate, SupplierPaymentStatusUpdate, SupplierDisburseRequest,
-    BackupRestoreRequest
+    SupplierCreate, SupplierUpdate, SupplierPaymentCreate, SupplierPaymentStatusUpdate,
+    SupplierDisburseRequest, BackupRestoreRequest
 )
 from saudi_hr_engine import SaudiHREngine
-from pdf_generator import generate_payslip_pdf, generate_supplier_statement_pdf
+from pdf_generator import (
+    generate_payslip_pdf, generate_supplier_statement_pdf,
+    generate_supplier_summary_report_pdf
+)
 
 # Initialize DB schema & indexes
 db.init_db()
@@ -576,6 +579,134 @@ def list_supplier_payments(
         "summary": aging_res["summary"],
         "payments": aging_res["processed_payments"]
     }
+
+@app.get("/api/suppliers/export/pdf")
+def export_supplier_report_pdf(user: dict = Depends(get_current_user)):
+    """Generates an executive Accounts Payable & Supplier Invoices PDF Report."""
+    raw_payments = db.query_all("SELECT * FROM supplier_payments ORDER BY id DESC")
+    aging_res = SaudiHREngine.calculate_accounts_payable_aging(raw_payments)
+    
+    setting_rows = db.query_all("SELECT * FROM settings")
+    settings = {s["key"]: s["value"] for s in setting_rows}
+    
+    pdf_bytes = generate_supplier_summary_report_pdf(
+        aging_res["processed_payments"],
+        aging_res["summary"],
+        settings
+    )
+    
+    filename = f"Accounts_Payable_Report_{date.today().strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+# --- Registered Suppliers / Vendors Directory Endpoints ---
+@app.get("/api/suppliers")
+def list_suppliers(user: dict = Depends(get_current_user)):
+    """Lists all registered suppliers/vendors with aggregated invoice and liability stats."""
+    suppliers = db.query_all("SELECT * FROM suppliers ORDER BY name ASC")
+    
+    # Calculate live invoice summaries per supplier
+    for sup in suppliers:
+        name = sup["name"]
+        inv_stats = db.query_one("""
+            SELECT COUNT(id) as inv_count,
+                   COALESCE(SUM(amount), 0.0) as total_billed,
+                   COALESCE(SUM(paid_amount), 0.0) as total_paid,
+                   COALESCE(SUM(remaining_amount), 0.0) as total_balance
+            FROM supplier_payments
+            WHERE company_name = ?
+        """, (name,))
+        
+        sup["invoices_count"] = inv_stats["inv_count"] if inv_stats else 0
+        sup["total_billed"] = round(float(inv_stats["total_billed"]), 2) if inv_stats else 0.0
+        sup["total_paid"] = round(float(inv_stats["total_paid"]), 2) if inv_stats else 0.0
+        sup["total_balance"] = round(float(inv_stats["total_balance"]), 2) if inv_stats else 0.0
+        
+    return suppliers
+
+@app.post("/api/suppliers")
+def create_supplier(req: SupplierCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    if not req.name or not req.name.strip():
+        raise HTTPException(status_code=400, detail="Supplier / Vendor name is required.")
+        
+    existing = db.query_one("SELECT id FROM suppliers WHERE LOWER(name) = LOWER(?)", (req.name.strip(),))
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Supplier '{req.name.strip()}' is already registered.")
+        
+    sup_id = db.execute_cmd("""
+        INSERT INTO suppliers (
+            name, contact_person, phone, email, cr_number, vat_number,
+            bank_name, iban, payment_terms, address, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        req.name.strip(), req.contact_person, req.phone, req.email,
+        req.cr_number, req.vat_number, req.bank_name, req.iban,
+        req.payment_terms or "Net 30", req.address, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
+    
+    return {"message": "Supplier profile created successfully", "id": sup_id}
+
+@app.get("/api/suppliers/{sup_id}")
+def get_supplier_detail(sup_id: int, user: dict = Depends(get_current_user)):
+    sup = db.query_one("SELECT * FROM suppliers WHERE id = ?", (sup_id,))
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+        
+    invoices = db.query_all("SELECT * FROM supplier_payments WHERE company_name = ? ORDER BY id DESC", (sup["name"],))
+    return {
+        "supplier": sup,
+        "invoices": invoices
+    }
+
+@app.put("/api/suppliers/{sup_id}")
+def update_supplier(sup_id: int, req: SupplierUpdate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+    sup = db.query_one("SELECT * FROM suppliers WHERE id = ?", (sup_id,))
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+        
+    dup = db.query_one("SELECT id FROM suppliers WHERE LOWER(name) = LOWER(?) AND id != ?", (req.name.strip(), sup_id))
+    if dup:
+        raise HTTPException(status_code=400, detail=f"Another supplier with name '{req.name.strip()}' already exists.")
+        
+    old_name = sup["name"]
+    new_name = req.name.strip()
+    
+    db.execute_cmd("""
+        UPDATE suppliers SET
+            name = ?,
+            contact_person = ?,
+            phone = ?,
+            email = ?,
+            cr_number = ?,
+            vat_number = ?,
+            bank_name = ?,
+            iban = ?,
+            payment_terms = ?,
+            address = ?
+        WHERE id = ?
+    """, (
+        new_name, req.contact_person, req.phone, req.email,
+        req.cr_number, req.vat_number, req.bank_name, req.iban,
+        req.payment_terms or "Net 30", req.address, sup_id
+    ))
+    
+    # If name changed, update linked supplier_payments
+    if old_name != new_name:
+        db.execute_cmd("UPDATE supplier_payments SET company_name = ? WHERE company_name = ?", (new_name, old_name))
+        
+    return {"message": "Supplier profile updated successfully"}
+
+@app.delete("/api/suppliers/{sup_id}")
+def delete_supplier(sup_id: int, user: dict = Depends(require_roles(["admin"]))):
+    sup = db.query_one("SELECT * FROM suppliers WHERE id = ?", (sup_id,))
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+        
+    db.execute_cmd("DELETE FROM suppliers WHERE id = ?", (sup_id,))
+    return {"message": f"Supplier '{sup['name']}' deleted successfully."}
 
 @app.get("/api/suppliers/vendors")
 def list_vendor_summaries(user: dict = Depends(get_current_user)):

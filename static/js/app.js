@@ -64,6 +64,7 @@ function checkAuthSession() {
   loadEmployees();
   loadPayrollRuns();
   loadLeaves();
+  loadSuppliersDirectory();
   loadSupplierPayments();
   loadFinanceAnalytics();
   loadSettings();
@@ -1122,9 +1123,275 @@ async function deleteLeave(leaveId) {
   }
 }
 
+// 7. SUPPLIER DIRECTORY & INVOICES MANAGEMENT
+let allSuppliers = [];
+
+function switchSupplierSubTab(tabId) {
+  document.querySelectorAll('#section-suppliers .tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('#section-suppliers .tab-content').forEach(c => c.classList.remove('active'));
+
+  const activeBtn = document.querySelector(`#section-suppliers .tab-btn[data-tab="${tabId}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+  const activeContent = document.getElementById(tabId);
+  if (activeContent) activeContent.classList.add('active');
+
+  if (tabId === 'sup-view-vendors') {
+    loadSuppliersDirectory();
+  } else if (tabId === 'sup-view-invoices') {
+    loadSupplierPayments();
+  }
+}
+
+async function loadSuppliersDirectory() {
+  try {
+    const res = await fetch('/api/suppliers', { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    allSuppliers = await res.json();
+
+    renderSuppliersDirectoryTable(allSuppliers);
+  } catch (err) {
+    console.error('Error loading suppliers directory:', err);
+  }
+}
+
+function renderSuppliersDirectoryTable(suppliersList) {
+  const tbody = document.getElementById('suppliers-directory-body');
+  if (!tbody) return;
+
+  if (suppliersList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 25px;">No suppliers registered yet. Click <strong>+ Add Supplier / Vendor</strong> to get started.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = suppliersList.map(sup => `
+    <tr>
+      <td>
+        <strong style="color: var(--text-main); font-size: 0.95rem;">${sup.name}</strong>
+        ${sup.bank_name ? `<br/><small style="color: var(--text-muted);">🏦 ${sup.bank_name}</small>` : ''}
+      </td>
+      <td>${sup.contact_person || '<span style="color:var(--text-muted);">-</span>'}</td>
+      <td>
+        ${sup.phone ? `<div>📞 ${sup.phone}</div>` : ''}
+        ${sup.email ? `<div>✉️ ${sup.email}</div>` : ''}
+        ${!sup.phone && !sup.email ? '<span style="color:var(--text-muted);">-</span>' : ''}
+      </td>
+      <td>
+        ${sup.cr_number ? `<div><small>CR:</small> <code>${sup.cr_number}</code></div>` : ''}
+        ${sup.vat_number ? `<div><small>VAT:</small> <code>${sup.vat_number}</code></div>` : ''}
+        ${!sup.cr_number && !sup.vat_number ? '<span style="color:var(--text-muted);">-</span>' : ''}
+      </td>
+      <td><span class="badge badge-saudi">${sup.payment_terms || 'Net 30'}</span></td>
+      <td><strong>${sup.invoices_count || 0}</strong></td>
+      <td>SAR ${(sup.total_billed || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+      <td>
+        <strong style="color: ${(sup.total_balance || 0) > 0 ? 'var(--danger)' : 'var(--success)'};">
+          SAR ${(sup.total_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}
+        </strong>
+      </td>
+      <td>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          ${currentUserRole !== 'viewer' ? `
+            <button class="btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openRecordInvoiceForSupplier('${sup.name.replace(/'/g, "\\'")}')">
+              + Invoice
+            </button>
+          ` : ''}
+          <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openVendorLedgerModal('${sup.name.replace(/'/g, "\\'")}')">
+            📊 Ledger
+          </button>
+          ${currentUserRole !== 'viewer' ? `
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openAddSupplierModal(${sup.id})">
+              ✏️
+            </button>
+          ` : ''}
+          ${currentUserRole === 'admin' ? `
+            <button class="btn btn-danger" style="padding: 2px 8px; font-size: 0.75rem;" onclick="deleteSupplier(${sup.id}, '${sup.name.replace(/'/g, "\\'")}')">
+              🗑️
+            </button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterSuppliersDirectory() {
+  const query = (document.getElementById('vendor-directory-search')?.value || '').toLowerCase().trim();
+  if (!query) {
+    renderSuppliersDirectoryTable(allSuppliers);
+    return;
+  }
+
+  const filtered = allSuppliers.filter(s => 
+    (s.name && s.name.toLowerCase().includes(query)) ||
+    (s.contact_person && s.contact_person.toLowerCase().includes(query)) ||
+    (s.phone && s.phone.includes(query)) ||
+    (s.cr_number && s.cr_number.includes(query)) ||
+    (s.email && s.email.toLowerCase().includes(query))
+  );
+
+  renderSuppliersDirectoryTable(filtered);
+}
+
+function openAddSupplierModal(supId = null) {
+  const form = document.getElementById('add-supplier-form');
+  if (form) form.reset();
+
+  document.getElementById('supplier-form-id').value = '';
+  document.getElementById('modal-supplier-title').innerText = '🏢 Add New Supplier / Vendor';
+  document.getElementById('btn-save-supplier').innerText = 'Save Supplier Profile';
+
+  if (supId) {
+    const sup = allSuppliers.find(x => x.id === supId);
+    if (sup) {
+      document.getElementById('supplier-form-id').value = sup.id;
+      document.getElementById('modal-supplier-title').innerText = `✏️ Edit Supplier: ${sup.name}`;
+      document.getElementById('btn-save-supplier').innerText = 'Update Supplier Profile';
+      document.getElementById('sup-name').value = sup.name || '';
+      document.getElementById('sup-contact').value = sup.contact_person || '';
+      document.getElementById('sup-phone').value = sup.phone || '';
+      document.getElementById('sup-email').value = sup.email || '';
+      document.getElementById('sup-cr').value = sup.cr_number || '';
+      document.getElementById('sup-vat').value = sup.vat_number || '';
+      document.getElementById('sup-bank').value = sup.bank_name || '';
+      document.getElementById('sup-terms').value = sup.payment_terms || 'Net 30';
+      document.getElementById('sup-iban').value = sup.iban || '';
+      document.getElementById('sup-address').value = sup.address || '';
+    }
+  }
+
+  openModal('modal-add-supplier');
+}
+
+async function submitAddSupplier() {
+  const supId = document.getElementById('supplier-form-id').value;
+  const isEdit = Boolean(supId);
+
+  const payload = {
+    name: document.getElementById('sup-name').value.trim(),
+    contact_person: document.getElementById('sup-contact').value.trim() || null,
+    phone: document.getElementById('sup-phone').value.trim() || null,
+    email: document.getElementById('sup-email').value.trim() || null,
+    cr_number: document.getElementById('sup-cr').value.trim() || null,
+    vat_number: document.getElementById('sup-vat').value.trim() || null,
+    bank_name: document.getElementById('sup-bank').value.trim() || null,
+    payment_terms: document.getElementById('sup-terms').value || 'Net 30',
+    iban: document.getElementById('sup-iban').value.trim() || null,
+    address: document.getElementById('sup-address').value.trim() || null
+  };
+
+  if (!payload.name) {
+    showToast('Please enter a Supplier Company Name.', 'error');
+    return;
+  }
+
+  try {
+    const url = isEdit ? `/api/suppliers/${supId}` : '/api/suppliers';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to save supplier profile', 'error');
+      return;
+    }
+
+    closeModal('modal-add-supplier');
+    loadSuppliersDirectory();
+    loadSupplierPayments();
+    showToast(isEdit ? 'Supplier updated successfully!' : 'Supplier created successfully!');
+  } catch (err) {
+    showToast(`Supplier save error: ${err}`, 'error');
+  }
+}
+
+async function deleteSupplier(supId, name) {
+  if (!confirm(`Are you sure you want to delete supplier "${name}"?`)) return;
+
+  try {
+    const res = await fetch(`/api/suppliers/${supId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to delete supplier', 'error');
+      return;
+    }
+
+    loadSuppliersDirectory();
+    showToast(`Supplier "${name}" deleted.`);
+  } catch (err) {
+    showToast(`Delete error: ${err}`, 'error');
+  }
+}
+
+function populateSupplierDropdown(selectedName = '') {
+  const select = document.getElementById('record-supplier-select');
+  const customInput = document.getElementById('record-supplier-custom-name');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">-- Choose Registered Supplier --</option>' +
+    allSuppliers.map(s => `<option value="${s.name}" ${s.name === selectedName ? 'selected' : ''}>${s.name}</option>`).join('') +
+    '<option value="__NEW__">➕ Enter New Supplier / Vendor Name...</option>';
+
+  if (selectedName && allSuppliers.some(s => s.name === selectedName)) {
+    select.value = selectedName;
+    if (customInput) {
+      customInput.style.display = 'none';
+      customInput.value = selectedName;
+    }
+  } else if (selectedName) {
+    select.value = '__NEW__';
+    if (customInput) {
+      customInput.style.display = 'block';
+      customInput.value = selectedName;
+    }
+  } else {
+    if (customInput) {
+      customInput.style.display = 'none';
+      customInput.value = '';
+    }
+  }
+}
+
+function handleSupplierSelectChange(val) {
+  const customInput = document.getElementById('record-supplier-custom-name');
+  if (!customInput) return;
+
+  if (val === '__NEW__') {
+    customInput.style.display = 'block';
+    customInput.value = '';
+    customInput.focus();
+  } else if (val) {
+    customInput.style.display = 'none';
+    customInput.value = val;
+  } else {
+    customInput.style.display = 'none';
+    customInput.value = '';
+  }
+}
+
+function openRecordInvoiceForSupplier(supplierName) {
+  openRecordSupplierPaymentModal(supplierName);
+}
+
+function exportAccountsPayablePdf() {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/suppliers/export/pdf?token=${encodeURIComponent(token)}`, '_blank');
+}
+
 // 7. SUPPLIER PAYMENTS & AP
 async function loadSupplierPayments() {
   try {
+    // Also refresh suppliers cache
+    loadSuppliersDirectory();
+
     const search = document.getElementById('supplier-search') ? document.getElementById('supplier-search').value : '';
     const status = document.getElementById('supplier-filter-status') ? document.getElementById('supplier-filter-status').value : '';
 
@@ -1156,7 +1423,7 @@ async function loadSupplierPayments() {
     if (!tbody) return;
 
     if (allSupplierPayments.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">No supplier payment records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 25px;">No supplier payment records found.</td></tr>`;
       return;
     }
 
@@ -1217,10 +1484,12 @@ async function loadSupplierPayments() {
   }
 }
 
-function openRecordSupplierPaymentModal() {
+function openRecordSupplierPaymentModal(prefillSupplierName = '') {
   const form = document.getElementById('record-supplier-form');
   if (form) form.reset();
   
+  populateSupplierDropdown(prefillSupplierName);
+
   const today = new Date().toISOString().split('T')[0];
   const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   

@@ -502,45 +502,98 @@
       </div>
 
       <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">🏢 Vendor Invoices & Accounts Payable</h3>
-          <button class="btn btn-primary" onclick="openRecordSupplierPaymentModal()">+ Record Supplier Invoice</button>
+        <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+          <h3 class="card-title">🏢 Suppliers, Vendor Directory & Payables</h3>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-outline" onclick="exportAccountsPayablePdf()">
+              📄 Export AP PDF Report
+            </button>
+            <button class="btn btn-outline" onclick="openAddSupplierModal()">
+              + Add Supplier / Vendor
+            </button>
+            <button class="btn btn-primary" onclick="openRecordSupplierPaymentModal()">
+              + Record Invoice
+            </button>
+          </div>
         </div>
 
-        <!-- Filters Bar -->
-        <div style="display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap;">
-          <input type="text" id="supplier-search" class="form-control" style="max-width: 250px;" placeholder="Search vendor, invoice #, remarks..." oninput="loadSupplierPayments()">
-          
-          <select id="supplier-filter-status" class="form-control" style="max-width: 180px;" onchange="loadSupplierPayments()">
-            <option value="">All Statuses</option>
-            <option value="Pending">Pending</option>
-            <option value="Partially Paid">Partially Paid</option>
-            <option value="Approved">Approved</option>
-            <option value="Paid">Paid</option>
-          </select>
+        <!-- Supplier Sub-Tabs -->
+        <div class="tab-container" style="margin-bottom: 20px;">
+          <button class="tab-btn active" data-tab="sup-view-vendors" onclick="switchSupplierSubTab('sup-view-vendors')">
+            🏢 Registered Suppliers Directory
+          </button>
+          <button class="tab-btn" data-tab="sup-view-invoices" onclick="switchSupplierSubTab('sup-view-invoices')">
+            📑 All Invoices & Accounts Payable
+          </button>
         </div>
 
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Vendor Company</th>
-                <th>Invoice #</th>
-                <th>Supply Period</th>
-                <th>Due Date</th>
-                <th>Total Billed</th>
-                <th>Paid</th>
-                <th>Outstanding</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="supplier-payments-body">
-              <tr><td colspan="10" style="text-align: center;">Loading supplier invoices...</td></tr>
-            </tbody>
-          </table>
+        <!-- SUB-TAB 1: Registered Suppliers Directory -->
+        <div id="sup-view-vendors" class="tab-content active">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <input type="text" id="vendor-directory-search" class="form-control" style="max-width: 300px;" placeholder="Search suppliers by name, CR, contact..." oninput="filterSuppliersDirectory()">
+            <button class="btn btn-primary" style="font-size: 0.85rem;" onclick="openAddSupplierModal()">+ New Supplier</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Supplier / Company</th>
+                  <th>Contact Person</th>
+                  <th>Phone & Email</th>
+                  <th>CR & VAT #</th>
+                  <th>Payment Terms</th>
+                  <th>Invoices</th>
+                  <th>Total Billed</th>
+                  <th>Balance Due</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="suppliers-directory-body">
+                <tr><td colspan="9" style="text-align: center;">Loading registered suppliers...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        <!-- SUB-TAB 2: Invoices & Accounts Payable -->
+        <div id="sup-view-invoices" class="tab-content">
+          <!-- Filters Bar -->
+          <div style="display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap;">
+            <input type="text" id="supplier-search" class="form-control" style="max-width: 280px;" placeholder="Search invoices by vendor, #, item..." oninput="loadSupplierPayments()">
+            
+            <select id="supplier-filter-status" class="form-control" style="max-width: 180px;" onchange="loadSupplierPayments()">
+              <option value="">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Partially Paid">Partially Paid</option>
+              <option value="Approved">Approved</option>
+              <option value="Paid">Paid</option>
+            </select>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Vendor Company</th>
+                  <th>Invoice #</th>
+                  <th>Supply Period</th>
+                  <th>Due Date</th>
+                  <th>Total Billed</th>
+                  <th>Paid</th>
+                  <th>Outstanding</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="supplier-payments-body">
+                <tr><td colspan="10" style="text-align: center;">Loading supplier invoices...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -1269,6 +1322,84 @@
     </div>
   </div>
 
+  <!-- MODAL: ADD / EDIT SUPPLIER PROFILE -->
+  <div id="modal-add-supplier" class="modal-overlay">
+    <div class="modal-box" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-supplier-title">🏢 Add New Supplier / Vendor</h3>
+        <button class="modal-close" onclick="closeModal('modal-add-supplier')">&times;</button>
+      </div>
+      <form id="add-supplier-form" onsubmit="event.preventDefault(); submitAddSupplier();">
+        <input type="hidden" id="supplier-form-id">
+        <div class="modal-body">
+          <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Company / Supplier Name *</label>
+              <input type="text" id="sup-name" name="name" class="form-control" required placeholder="e.g. Al-Jazeera Office Supplies Co.">
+            </div>
+            <div class="form-group">
+              <label>Contact Person</label>
+              <input type="text" id="sup-contact" name="contact_person" class="form-control" placeholder="e.g. Ahmed Al-Ghamdi">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="text" id="sup-phone" name="phone" class="form-control" placeholder="+966 50 123 4567">
+            </div>
+            <div class="form-group">
+              <label>Email Address</label>
+              <input type="email" id="sup-email" name="email" class="form-control" placeholder="accounts@supplier.com">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Commercial Reg. (CR) #</label>
+              <input type="text" id="sup-cr" name="cr_number" class="form-control" placeholder="1010XXXXXX">
+            </div>
+            <div class="form-group">
+              <label>VAT / Tax ID #</label>
+              <input type="text" id="sup-vat" name="vat_number" class="form-control" placeholder="300XXXXXXXXXXXX">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Bank Name</label>
+              <input type="text" id="sup-bank" name="bank_name" class="form-control" placeholder="e.g. Al Rajhi Bank / Riyad Bank">
+            </div>
+            <div class="form-group">
+              <label>Payment Terms</label>
+              <select id="sup-terms" name="payment_terms" class="form-control">
+                <option value="Immediate">Immediate / Upfront</option>
+                <option value="Net 15">Net 15 Days</option>
+                <option value="Net 30" selected>Net 30 Days</option>
+                <option value="Net 60">Net 60 Days</option>
+                <option value="Net 90">Net 90 Days</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Bank Account IBAN</label>
+            <input type="text" id="sup-iban" name="iban" class="form-control" placeholder="SA0000000000000000000000">
+          </div>
+
+          <div class="form-group">
+            <label>Address / Location Details</label>
+            <textarea id="sup-address" name="address" class="form-control" rows="2" placeholder="King Fahd Road, Riyadh, KSA"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-add-supplier')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-supplier">Save Supplier Profile</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL: RECORD SUPPLIER PAYMENT -->
   <div id="modal-record-supplier" class="modal-overlay">
     <div class="modal-box" style="max-width: 650px;">
@@ -1280,8 +1411,11 @@
         <div class="modal-body">
           <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px;">
             <div class="form-group">
-              <label>Company / Vendor Name *</label>
-              <input type="text" name="company_name" class="form-control" required placeholder="Al-Jazeera Office Supplies Co.">
+              <label>Select Registered Supplier *</label>
+              <select id="record-supplier-select" class="form-control" onchange="handleSupplierSelectChange(this.value)">
+                <option value="">-- Choose Supplier --</option>
+              </select>
+              <input type="text" id="record-supplier-custom-name" name="company_name" class="form-control" style="margin-top: 6px; display: none;" required placeholder="Or type new supplier name...">
             </div>
             <div class="form-group">
               <label>Invoice Number</label>

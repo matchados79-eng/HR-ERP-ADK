@@ -435,3 +435,184 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
+
+def generate_supplier_summary_report_pdf(
+    invoices: List[Dict[str, Any]],
+    summary_stats: Dict[str, Any],
+    company_info: Dict[str, Any]
+) -> bytes:
+    """
+    Generates a comprehensive Accounts Payable & Supplier Invoices Report PDF.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=16,
+        leading=20,
+        textColor=colors.HexColor('#006C35'),
+        alignment=2
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'SubTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor('#4B5563')
+    )
+    
+    section_heading = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=10.5,
+        leading=14,
+        textColor=colors.HexColor('#0B5D34')
+    )
+    
+    cell_style = ParagraphStyle(
+        'CellText',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#1F2937')
+    )
+    
+    cell_bold = ParagraphStyle(
+        'CellBold',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#1F2937')
+    )
+    
+    elements = []
+    
+    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
+    cr_num = company_info.get("cr_number", "1010894512")
+    
+    header_data = [
+        [
+            Paragraph(f"<b>{company_name}</b><br/><font size=8 color='#6B7280'>Commercial Reg: {cr_num} | Riyadh, Saudi Arabia</font>", subtitle_style),
+            Paragraph("<b>ACCOUNTS PAYABLE REPORT</b><br/><font size=8.5 color='#006C35'>Supplier Invoices & Liability Schedule</font>", title_style)
+        ]
+    ]
+    
+    header_table = Table(header_data, colWidths=[4.2*inch, 3.2*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 8))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#006C35'), spaceAfter=10))
+    
+    # KPI Summary Row
+    tot_billed = float(summary_stats.get("total_billed", sum(float(i.get("amount", 0)) for i in invoices)))
+    tot_paid = float(summary_stats.get("total_paid", sum(float(i.get("paid_amount", 0)) for i in invoices)))
+    tot_rem = float(summary_stats.get("total_outstanding_payable", sum(float(i.get("remaining_amount", 0)) for i in invoices)))
+    tot_over = float(summary_stats.get("total_overdue_payable", 0.0))
+    
+    summary_data = [
+        [
+            Paragraph("<b>Total Invoices:</b>", cell_bold), Paragraph(f"{len(invoices)} Records", cell_style),
+            Paragraph("<b>Total Billed:</b>", cell_bold), Paragraph(f"SAR {tot_billed:,.2f}", cell_style),
+            Paragraph("<b>Total Disbursed:</b>", cell_bold), Paragraph(f"SAR {tot_paid:,.2f}", cell_style),
+            Paragraph("<b>Net Liability Due:</b>", ParagraphStyle('RedLbl', parent=cell_bold, textColor=colors.HexColor('#991B1B'))),
+            Paragraph(f"<b>SAR {tot_rem:,.2f}</b>", ParagraphStyle('RedVal', parent=cell_bold, textColor=colors.HexColor('#DC2626')))
+        ]
+    ]
+    sum_table = Table(summary_data, colWidths=[1.1*inch, 0.8*inch, 0.9*inch, 1.1*inch, 1.0*inch, 1.1*inch, 1.0*inch, 1.2*inch])
+    sum_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(sum_table)
+    elements.append(Spacer(1, 12))
+    
+    elements.append(Paragraph("Schedule of Supplier Invoices & Payment Obligations", section_heading))
+    elements.append(Spacer(1, 6))
+    
+    inv_rows = [
+        [
+            Paragraph("<font color='white'><b>Vendor Company</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Invoice #</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Supply Period</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Due Date</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Total (SAR)</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Paid (SAR)</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Balance (SAR)</b></font>", cell_bold),
+            Paragraph("<font color='white'><b>Status</b></font>", cell_bold)
+        ]
+    ]
+    
+    if not invoices:
+        inv_rows.append([Paragraph("No supplier invoice records found.", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style), Paragraph("-", cell_style)])
+    else:
+        for inv in invoices:
+            start_d = inv.get("supply_start_date") or inv.get("supply_date", "")
+            end_d = inv.get("supply_end_date") or inv.get("supply_date", "")
+            period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
+            
+            amt = float(inv.get("amount", 0.0))
+            pd = float(inv.get("paid_amount", 0.0))
+            rem = float(inv.get("remaining_amount", max(0.0, amt - pd)))
+            st = str(inv.get("status", "Pending"))
+            
+            inv_rows.append([
+                Paragraph(f"<b>{inv.get('company_name', '')}</b>", cell_style),
+                Paragraph(str(inv.get('invoice_number', 'N/A')), cell_style),
+                Paragraph(period, cell_style),
+                Paragraph(str(inv.get('due_date', '')), cell_style),
+                Paragraph(f"{amt:,.2f}", cell_style),
+                Paragraph(f"{pd:,.2f}", cell_style),
+                Paragraph(f"<b>{rem:,.2f}</b>", cell_style),
+                Paragraph(st, cell_style)
+            ])
+            
+    inv_table = Table(inv_rows, colWidths=[1.6*inch, 0.9*inch, 1.2*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch])
+    inv_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#006C35')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#D1D5DB')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(inv_table)
+    elements.append(Spacer(1, 20))
+    
+    # Signature
+    sig_data = [
+        [
+            Paragraph("<b>Prepared By: Accounts Payable Officer</b><br/><br/>____________________________________", subtitle_style),
+            Paragraph("<b>Approved By: Chief Financial Officer</b><br/><br/>____________________________________", subtitle_style)
+        ]
+    ]
+    sig_table = Table(sig_data, colWidths=[3.7*inch, 3.7*inch])
+    elements.append(sig_table)
+    
+    doc.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
