@@ -86,10 +86,10 @@ def generate_supplier_summary_report_pdf(
     using Playwright with rich corporate styling, supplier grouping, subtotal ribbons,
     cash-flow advisory, and boardroom verification.
     """
-    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
-    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
-    cr_num = company_info.get("cr_number", "1010894512")
-    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
+    company_name = company_info.get("company_name", "ADK Co., LTD.")
+    ar_name = company_info.get("company_arabic_name", "شركة إيه دي كيه للخدمات الصناعية المحدودة")
+    cr_num = company_info.get("cr_number", "2055001234")
+    address = company_info.get("address", "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia")
     
     gen_time = format_long_datetime()
     f_info = filter_info or {}
@@ -532,10 +532,10 @@ def generate_supplier_summary_report_pdf(
 # =========================================================================
 def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: dict) -> bytes:
     """Generates an executive Vendor Statement of Account & Payment Voucher PDF using Playwright."""
-    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
-    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
-    cr_num = company_info.get("cr_number", "1010894512")
-    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
+    company_name = company_info.get("company_name", "ADK Co., LTD.")
+    ar_name = company_info.get("company_arabic_name", "شركة إيه دي كيه للخدمات الصناعية المحدودة")
+    cr_num = company_info.get("cr_number", "2055001234")
+    address = company_info.get("address", "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia")
     
     total_amt = float(sp.get("amount", 0.0))
     paid_amt = float(sp.get("paid_amount", 0.0))
@@ -723,11 +723,11 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
 # =========================================================================
 def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info: dict) -> bytes:
     """Generates an executive Bilingual Saudi Standard Salary Voucher PDF using Playwright."""
-    company_name = company_info.get("company_name", "Al-Amal Enterprise Solutions KSA")
-    ar_name = company_info.get("company_arabic_name", "شركة الأمل لترشيد الحلول المتكاملة")
-    cr_num = company_info.get("cr_number", "1010894512")
+    company_name = company_info.get("company_name", "ADK Co., LTD.")
+    ar_name = company_info.get("company_arabic_name", "شركة إيه دي كيه للخدمات الصناعية المحدودة")
+    cr_num = company_info.get("cr_number", "2055001234")
     gosi_reg = company_info.get("gosi_reg_number", "309481920")
-    address = company_info.get("address", "King Fahd Road, Riyadh, Saudi Arabia")
+    address = company_info.get("address", "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia")
     
     pay_period_str = format_pay_period(payroll_detail.get('month', ''), payroll_detail.get('year', ''))
     

@@ -1,20 +1,21 @@
-/* Saudi HR & SME Finance ERP System - Production Design System */
+/* ADK Co., LTD. (ADK N-Protech) Industrial ERP System - Design System */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --primary: #006C35;
-  --primary-hover: #00562a;
-  --primary-dark: #044223;
-  --primary-light: #E8F5E9;
-  --secondary: #10B981;
-  --secondary-light: #D1FAE5;
-  --accent-gold: #D97706;
+  --primary: #0047AB;              /* ADK Cobalt Industrial Blue */
+  --primary-hover: #003888;
+  --primary-dark: #0A1128;         /* ADK Deep Navy */
+  --primary-light: #EFF6FF;
+  --secondary: #0284C7;            /* Sky Blue Accent */
+  --secondary-light: #E0F2FE;
+  --accent-gold: #D97706;          /* Industrial Amber/Gold */
   --accent-gold-light: #FEF3C7;
   
   --bg-main: #F8FAFC;
   --bg-card: #FFFFFF;
-  --bg-sidebar: #064E2B;
-  --bg-sidebar-hover: rgba(255, 255, 255, 0.12);
-  --bg-sidebar-active: #04381F;
+  --bg-sidebar: #0A1128;
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --bg-sidebar-active: #0047AB;
   
   --text-main: #0F172A;
   --text-muted: #64748B;
@@ -22,24 +23,24 @@
   --text-white: #FFFFFF;
   
   --border-color: #E2E8F0;
-  --border-focus: #10B981;
+  --border-focus: #0047AB;
   
   --success: #059669;
   --warning: #F59E0B;
   --danger: #DC2626;
-  --info: #2563EB;
+  --info: #0047AB;
   
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-full: 9999px;
   
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -60,11 +61,11 @@ body {
 }
 
 /* ==========================================================================
-   SIDEBAR NAVIGATION
+   SIDEBAR NAVIGATION (ADK Deep Navy)
    ========================================================================== */
 .sidebar {
   width: 270px;
-  background: linear-gradient(180deg, #064E2B 0%, #032E19 100%);
+  background: linear-gradient(180deg, #0A1128 0%, #050B1B 100%);
   color: var(--text-white);
   display: flex;
   flex-direction: column;
@@ -72,22 +73,23 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
-  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.08);
+  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.15);
   z-index: 100;
 }
 
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 22px 18px;
   display: flex;
   align-items: center;
-  gap: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .logo-badge {
   width: 44px;
   height: 44px;
-  background: linear-gradient(135deg, #10B981 0%, #006C35 100%);
+  background: linear-gradient(135deg, #0047AB 0%, #0284C7 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;

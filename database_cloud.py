@@ -297,25 +297,31 @@ def init_db():
     except Exception:
         pass
     
-    # Default Settings
+    # Default Settings (ADK Co., LTD. - www.adknprotech.com)
     default_settings = {
-        "company_name": "Al-Amal Enterprise Solutions KSA",
-        "company_arabic_name": "شركة الأمل لترشيد الحلول المتكاملة",
-        "cr_number": "1010894512",
+        "company_name": "ADK Co., LTD.",
+        "company_arabic_name": "شركة إيه دي كيه للخدمات الصناعية المحدودة",
+        "cr_number": "2055001234",
         "mol_establishment_id": "7-889412",
         "gosi_reg_number": "309481920",
         "wps_bank_code": "RIBL",
         "wps_bank_name": "Riyad Bank",
-        "hr_email": "hr@alamal-ksa.com",
-        "address": "King Fahd Road, Olaya District, Riyadh, Saudi Arabia"
+        "hr_email": "sales@adknprotech.com",
+        "address": "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia",
+        "phone": "+966-50-285-4880",
+        "website": "www.adknprotech.com"
     }
     
     for k, v in default_settings.items():
-        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (k, v))
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);", (k, v))
         
-    # Default Admin User
+    # Default Admin Users (ADK Co., LTD.)
     from auth import hash_password
     default_admin_hash = hash_password("AdminSecret123!")
+    cursor.execute("""
+        INSERT OR IGNORE INTO users (email, hashed_password, full_name, role, created_at)
+        VALUES ('admin@adknprotech.com', ?, 'ADK System Administrator', 'admin', '2026-08-06 12:00:00')
+    """, (default_admin_hash,))
     cursor.execute("""
         INSERT OR IGNORE INTO users (email, hashed_password, full_name, role, created_at)
         VALUES ('admin@alamal-ksa.com', ?, 'System Administrator', 'admin', '2026-08-06 12:00:00')
