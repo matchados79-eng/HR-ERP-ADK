@@ -20,6 +20,9 @@ function openModal(modalId) {
   const m = document.getElementById(modalId);
   if (m) {
     m.classList.add('active');
+    m.style.visibility = 'visible';
+    m.style.opacity = '1';
+    m.style.display = 'flex';
   }
 }
 
@@ -27,6 +30,9 @@ function closeModal(modalId) {
   const m = document.getElementById(modalId);
   if (m) {
     m.classList.remove('active');
+    m.style.visibility = 'hidden';
+    m.style.opacity = '0';
+    m.style.display = 'none';
   }
 }
 
