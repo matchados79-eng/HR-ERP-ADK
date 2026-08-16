@@ -1350,9 +1350,9 @@ async function openWorkerTimesheetModal(employeeId) {
     };
 
     setVal('ts-wps-deduction', detail.wps_deduction, 0.00);
-    setVal('ts-water-bill', detail.water_bill, 12.89);
+    setVal('ts-water-bill', detail.water_bill, 0.00);
     setVal('ts-other-deductions', detail.other_deductions, 0.00);
-    setVal('ts-cash-advance', detail.cash_advance, 400.00);
+    setVal('ts-cash-advance', detail.cash_advance, 0.00);
     setVal('ts-adjustment-add', detail.adjustment_add, 0.00);
     setVal('ts-adjustment-sub', detail.adjustment_sub, 0.00);
 
