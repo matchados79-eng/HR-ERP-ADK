@@ -793,6 +793,77 @@ def get_vendor_ledger(company_name: str, user: dict = Depends(get_current_user))
         "payment_logs": logs
     }
 
+@app.post("/api/suppliers/vendors/{company_name}/disburse")
+def disburse_vendor_lump_sum(
+    company_name: str,
+    req: SupplierDisburseRequest,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Applies a lump-sum supplier payment across all open/pending invoices 
+    using FIFO (First-In, First-Out: oldest invoices settled first).
+    """
+    if req.payment_amount <= 0:
+        raise HTTPException(status_code=400, detail="Disbursal amount must be greater than zero.")
+        
+    open_invoices = db.query_all("""
+        SELECT * FROM supplier_payments 
+        WHERE company_name = ? AND remaining_amount > 0 
+        ORDER BY invoice_date ASC, id ASC
+    """, (company_name,))
+    
+    if not open_invoices:
+        raise HTTPException(status_code=400, detail=f"No outstanding unpaid invoices found for '{company_name}'.")
+        
+    remaining_to_apply = float(req.payment_amount)
+    pay_date = req.payment_date or date.today().strftime("%Y-%m-%d")
+    settlements = []
+    
+    for inv in open_invoices:
+        if remaining_to_apply <= 0:
+            break
+            
+        inv_rem = float(inv["remaining_amount"])
+        inv_id = inv["id"]
+        
+        applied_now = min(remaining_to_apply, inv_rem)
+        new_paid = float(inv["paid_amount"]) + applied_now
+        new_rem = max(0.0, float(inv["amount"]) - new_paid)
+        new_status = "Paid" if new_rem == 0 else "Partially Paid"
+        
+        # Update invoice
+        db.execute_cmd("""
+            UPDATE supplier_payments 
+            SET paid_amount = ?, remaining_amount = ?, status = ?, payment_date = ?
+            WHERE id = ?
+        """, (new_paid, new_rem, new_status, pay_date, inv_id))
+        
+        # Log payment transaction
+        log_notes = f"{req.notes or 'Vendor settlement'} (Auto-applied SAR {applied_now:,.2f} from lump-sum payment)"
+        db.execute_cmd("""
+            INSERT INTO supplier_payment_logs (
+                supplier_payment_id, payment_amount, payment_date, payment_method, reference_number, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (inv_id, applied_now, pay_date, req.payment_method or "Bank Transfer", req.reference_number or None, log_notes, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        settlements.append({
+            "invoice_id": inv_id,
+            "invoice_number": inv.get("invoice_number"),
+            "applied_amount": applied_now,
+            "new_remaining": new_rem,
+            "status": new_status
+        })
+        
+        remaining_to_apply -= applied_now
+        
+    return {
+        "message": f"Successfully disbursed SAR {req.payment_amount:,.2f} to {company_name} across {len(settlements)} invoice(s).",
+        "company_name": company_name,
+        "total_disbursed": req.payment_amount,
+        "unapplied_credit": max(0.0, remaining_to_apply),
+        "settlements": settlements
+    }
+
 @app.post("/api/suppliers/payments")
 def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
     if not req.company_name or not req.company_name.strip():

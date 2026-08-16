@@ -1190,6 +1190,11 @@ function renderSuppliersDirectoryTable(suppliersList) {
       </td>
       <td>
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          ${(sup.total_balance || 0) > 0 && currentUserRole !== 'viewer' ? `
+            <button class="btn btn-success" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openDisburseVendorLumpSumModal('${sup.name.replace(/'/g, "\\'")}', ${sup.total_balance})">
+              💳 Pay
+            </button>
+          ` : ''}
           ${currentUserRole !== 'viewer' ? `
             <button class="btn btn-primary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openRecordInvoiceForSupplier('${sup.name.replace(/'/g, "\\'")}')">
               + Invoice
@@ -1871,6 +1876,7 @@ function duplicateInvoiceToNextMonth() {
 
 function openDisburseSupplierPaymentModal(spId, companyName, remainingAmount) {
   document.getElementById('disburse-sp-id').value = spId;
+  if (document.getElementById('disburse-company-name')) document.getElementById('disburse-company-name').value = companyName;
   document.getElementById('disburse-modal-title').innerText = `Disburse Payment: ${companyName}`;
   document.getElementById('disburse-current-remaining').innerText = `SAR ${remainingAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
   document.getElementById('disburse-amount').value = remainingAmount;
@@ -1880,8 +1886,21 @@ function openDisburseSupplierPaymentModal(spId, companyName, remainingAmount) {
   openModal('modal-disburse-supplier');
 }
 
+function openDisburseVendorLumpSumModal(companyName, totalBalance) {
+  document.getElementById('disburse-sp-id').value = '';
+  if (document.getElementById('disburse-company-name')) document.getElementById('disburse-company-name').value = companyName;
+  document.getElementById('disburse-modal-title').innerText = `Settle Vendor Account: ${companyName}`;
+  document.getElementById('disburse-current-remaining').innerText = `SAR ${totalBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('disburse-amount').value = totalBalance;
+  document.getElementById('disburse-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('disburse-reference').value = `TXN-${Math.floor(100000 + Math.random() * 900000)}`;
+  document.getElementById('disburse-notes').value = `Lump-sum vendor settlement for ${companyName}`;
+  openModal('modal-disburse-supplier');
+}
+
 async function submitDisburseSupplierPayment() {
   const spId = document.getElementById('disburse-sp-id').value;
+  const companyName = document.getElementById('disburse-company-name')?.value || '';
   const amount = parseFloat(document.getElementById('disburse-amount').value || 0);
   const payDate = document.getElementById('disburse-date').value;
   const method = document.getElementById('disburse-method').value;
@@ -1893,8 +1912,10 @@ async function submitDisburseSupplierPayment() {
     return;
   }
 
+  const url = spId ? `/api/suppliers/payments/${spId}/disburse` : `/api/suppliers/vendors/${encodeURIComponent(companyName)}/disburse`;
+
   try {
-    const res = await fetch(`/api/suppliers/payments/${spId}/disburse`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -1913,10 +1934,11 @@ async function submitDisburseSupplierPayment() {
     }
 
     const data = await res.json();
-    showToast(`Payment of SAR ${amount.toLocaleString()} disbursed successfully!`);
+    showToast(data.message || `Payment of SAR ${amount.toLocaleString()} disbursed successfully!`);
     closeModal('modal-disburse-supplier');
 
     loadSupplierPayments();
+    loadSuppliersDirectory();
     loadFinanceAnalytics();
     loadDashboardData();
 

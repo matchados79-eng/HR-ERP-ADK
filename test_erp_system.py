@@ -333,6 +333,52 @@ def test_supplier_payments_and_disbursals():
     del_att_res = client.delete(f"/api/suppliers/payments/{sp_id}/attachment", headers=headers)
     assert del_att_res.status_code == 200
 
+    # 6. Test Multi-Invoice Lump-Sum Settlement (Jan 5000 + Feb 17000, Paid 8000 -> Remaining 14000)
+    inv1_res = client.post("/api/suppliers/payments", json={
+        "company_name": "Test Cloud Services Ltd",
+        "invoice_number": "INV-JAN-5000",
+        "invoice_date": "2026-01-10",
+        "due_date": "2026-02-10",
+        "amount": 5000.0,
+        "status": "Pending"
+    }, headers=headers)
+    inv1_id = inv1_res.json()["id"]
+
+    inv2_res = client.post("/api/suppliers/payments", json={
+        "company_name": "Test Cloud Services Ltd",
+        "invoice_number": "INV-FEB-17000",
+        "invoice_date": "2026-02-10",
+        "due_date": "2026-03-10",
+        "amount": 17000.0,
+        "status": "Pending"
+    }, headers=headers)
+    inv2_id = inv2_res.json()["id"]
+
+    # Settle SAR 8,000 across the vendor
+    lump_res = client.post("/api/suppliers/vendors/Test%20Cloud%20Services%20Ltd/disburse", json={
+        "payment_amount": 8000.0,
+        "payment_method": "Bank Transfer",
+        "reference_number": "LUMP-8000-TEST",
+        "notes": "Lump sum partial vendor settlement"
+    }, headers=headers)
+    assert lump_res.status_code == 200
+
+    # Verify FIFO allocation:
+    # First invoice (Jan 5000) is Paid (remaining 0)
+    # Second invoice (Feb 17000) is Partially Paid (remaining 14000)
+    i1 = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (inv1_id,))
+    i2 = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (inv2_id,))
+    assert i1["paid_amount"] == 5000.0
+    assert i1["remaining_amount"] == 0.0
+    assert i1["status"] == "Paid"
+
+    assert i2["paid_amount"] == 3000.0
+    assert i2["remaining_amount"] == 14000.0
+    assert i2["status"] == "Partially Paid"
+
+    # Cleanup
+    client.delete(f"/api/suppliers/payments/{inv1_id}", headers=headers)
+    client.delete(f"/api/suppliers/payments/{inv2_id}", headers=headers)
     client.delete(f"/api/suppliers/payments/{rec_id}", headers=headers)
     client.delete(f"/api/suppliers/payments/{sp_id}", headers=headers)
     client.delete(f"/api/suppliers/{sup_id}", headers=headers)
