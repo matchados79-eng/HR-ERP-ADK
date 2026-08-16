@@ -582,18 +582,58 @@ def list_supplier_payments(
     }
 
 @app.get("/api/suppliers/export/pdf")
-def export_supplier_report_pdf(user: dict = Depends(get_current_user)):
-    """Generates an executive Accounts Payable & Supplier Invoices PDF Report."""
-    raw_payments = db.query_all("SELECT * FROM supplier_payments ORDER BY id DESC")
+def export_supplier_report_pdf(
+    suppliers: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user)
+):
+    """Generates an executive Accounts Payable & Supplier Invoices PDF Report with custom vendor selection."""
+    sql = "SELECT * FROM supplier_payments WHERE 1=1"
+    params = []
+    
+    selected_names = []
+    if suppliers and suppliers.strip() and suppliers.strip().lower() != "all":
+        selected_names = [s.strip() for s in suppliers.split(",") if s.strip()]
+        if selected_names:
+            placeholders = ",".join("?" * len(selected_names))
+            sql += f" AND company_name IN ({placeholders})"
+            params.extend(selected_names)
+            
+    if status and status.strip() and status.strip() != "All":
+        sql += " AND status = ?"
+        params.append(status.strip())
+        
+    if start_date and start_date.strip():
+        sql += " AND invoice_date >= ?"
+        params.append(start_date.strip())
+        
+    if end_date and end_date.strip():
+        sql += " AND invoice_date <= ?"
+        params.append(end_date.strip())
+        
+    sql += " ORDER BY company_name ASC, id DESC"
+    raw_payments = db.query_all(sql, tuple(params))
     aging_res = SaudiHREngine.calculate_accounts_payable_aging(raw_payments)
     
     setting_rows = db.query_all("SELECT * FROM settings")
     settings = {s["key"]: s["value"] for s in setting_rows}
     
+    target_scope_str = ", ".join(selected_names) if selected_names else "All Registered Suppliers"
+    date_scope_str = f"{start_date or 'Start'} to {end_date or 'Present'}" if (start_date or end_date) else "All Historical Invoices"
+    
+    filter_info = {
+        "selected_suppliers": target_scope_str,
+        "status": status or "All Statuses",
+        "date_range": date_scope_str
+    }
+    
     pdf_bytes = generate_supplier_summary_report_pdf(
         aging_res["processed_payments"],
         aging_res["summary"],
-        settings
+        settings,
+        filter_info
     )
     
     filename = f"Accounts_Payable_Report_{date.today().strftime('%Y%m%d')}.pdf"

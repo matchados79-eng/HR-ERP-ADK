@@ -234,6 +234,10 @@ def test_supplier_payments_and_disbursals():
     token = auth.create_jwt_token({"user_id": 1, "email": "admin@alamal-ksa.com", "role": "admin", "full_name": "Admin"})
     headers = {"Authorization": f"Bearer {token}"}
     
+    # Pre-clean any test supplier records
+    db.execute_cmd("DELETE FROM supplier_payments WHERE company_name = 'Test Cloud Services Ltd'")
+    db.execute_cmd("DELETE FROM suppliers WHERE name = 'Test Cloud Services Ltd'")
+
     # 1. Test Supplier Profile Creation & Listing
     sup_create_res = client.post("/api/suppliers", json={
         "name": "Test Cloud Services Ltd",
@@ -276,14 +280,25 @@ def test_supplier_payments_and_disbursals():
     assert disb_res.json()["remaining_amount"] == 15000.0
     assert disb_res.json()["status"] == "Partially Paid"
     
-    # 3. Test Statement PDF & AP Report PDF Export
+    # 3. Test Statement PDF & AP Report PDF Export (All, Single Supplier, Multi Supplier)
     pdf_res = client.get(f"/api/suppliers/payments/{sp_id}/statement.pdf", headers=headers)
     assert pdf_res.status_code == 200
     assert len(pdf_res.content) > 1000
 
+    # All suppliers report
     ap_report_pdf = client.get("/api/suppliers/export/pdf", headers=headers)
     assert ap_report_pdf.status_code == 200
     assert len(ap_report_pdf.content) > 1000
+
+    # Single supplier report
+    ap_single_pdf = client.get("/api/suppliers/export/pdf?suppliers=Test%20Cloud%20Services%20Ltd", headers=headers)
+    assert ap_single_pdf.status_code == 200
+    assert len(ap_single_pdf.content) > 1000
+
+    # Multi supplier report with status filter
+    ap_multi_pdf = client.get("/api/suppliers/export/pdf?suppliers=Test%20Cloud%20Services%20Ltd,Al-Jazeera%20Office%20Supplies%20Co.&status=Pending", headers=headers)
+    assert ap_multi_pdf.status_code == 200
+    assert len(ap_multi_pdf.content) > 1000
     
     ledger_res = client.get("/api/suppliers/vendors/Test%20Cloud%20Services%20Ltd/ledger", headers=headers)
     assert ledger_res.status_code == 200

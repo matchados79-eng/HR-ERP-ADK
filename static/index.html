@@ -1322,6 +1322,76 @@
     </div>
   </div>
 
+  <!-- MODAL: EXPORT ACCOUNTS PAYABLE PDF REPORT -->
+  <div id="modal-export-ap-report" class="modal-overlay">
+    <div class="modal-box" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 class="modal-title">📄 Generate Accounts Payable PDF Report</h3>
+        <button class="modal-close" onclick="closeModal('modal-export-ap-report')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: #F0FDF4; border: 1px solid #86EFAC; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: #166534;">
+          <strong>Official Saudi ERP Report Generator:</strong> Select one, several, or all suppliers below to generate a consolidated schedule with supplier subtotals, aging balances, and executive signature blocks.
+        </div>
+
+        <div class="form-group">
+          <label style="font-weight: 700;">Supplier Scope Selection *</label>
+          <div style="display: flex; gap: 20px; margin-top: 6px; margin-bottom: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="ap-report-scope" value="all" checked onchange="toggleSupplierSelectionScope(this.value)">
+              <span>All Registered Suppliers</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="ap-report-scope" value="custom" onchange="toggleSupplierSelectionScope(this.value)">
+              <span>Select Specific Supplier(s)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Multi-Supplier Checkboxes (Shown when custom is selected) -->
+        <div id="ap-report-suppliers-container" style="display: none; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px; margin-bottom: 16px; max-height: 180px; overflow-y: auto;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.8rem;">
+            <span style="font-weight: 700; color: var(--text-main);">Select Suppliers to Include:</span>
+            <div>
+              <a href="javascript:void(0)" onclick="selectAllReportSuppliers(true)" style="color: var(--primary); font-weight: 600; margin-right: 10px;">Select All</a>
+              <a href="javascript:void(0)" onclick="selectAllReportSuppliers(false)" style="color: var(--text-muted);">Clear</a>
+            </div>
+          </div>
+          <div id="ap-report-suppliers-list" style="display: flex; flex-direction: column; gap: 6px;">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label>Payment Status Filter</label>
+            <select id="ap-report-status" class="form-control">
+              <option value="">All Statuses (Pending, Partially Paid, Paid)</option>
+              <option value="Pending">Pending / Unpaid Only</option>
+              <option value="Partially Paid">Partially Paid Only</option>
+              <option value="Paid">Fully Settled (Paid) Only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Invoice Date From (Optional)</label>
+            <input type="date" id="ap-report-start-date" class="form-control">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Invoice Date To (Optional)</label>
+          <input type="date" id="ap-report-end-date" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-export-ap-report')">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitGenerateApReportPdf()">
+          📥 Generate & View PDF Report
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: ADD / EDIT SUPPLIER PROFILE -->
   <div id="modal-add-supplier" class="modal-overlay">
     <div class="modal-box" style="max-width: 650px;">

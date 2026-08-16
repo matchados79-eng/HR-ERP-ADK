@@ -1382,8 +1382,93 @@ function openRecordInvoiceForSupplier(supplierName) {
 }
 
 function exportAccountsPayablePdf() {
+  openExportApReportModal();
+}
+
+function openExportApReportModal() {
+  populateReportSuppliersCheckboxes();
+  
+  const allRadio = document.querySelector('input[name="ap-report-scope"][value="all"]');
+  if (allRadio) allRadio.checked = true;
+  toggleSupplierSelectionScope('all');
+
+  const statusEl = document.getElementById('ap-report-status');
+  if (statusEl) statusEl.value = '';
+  const startEl = document.getElementById('ap-report-start-date');
+  if (startEl) startEl.value = '';
+  const endEl = document.getElementById('ap-report-end-date');
+  if (endEl) endEl.value = '';
+
+  openModal('modal-export-ap-report');
+}
+
+function toggleSupplierSelectionScope(scope) {
+  const container = document.getElementById('ap-report-suppliers-container');
+  if (!container) return;
+  container.style.display = scope === 'custom' ? 'block' : 'none';
+}
+
+function populateReportSuppliersCheckboxes() {
+  const list = document.getElementById('ap-report-suppliers-list');
+  if (!list) return;
+
+  if (allSuppliers.length === 0) {
+    list.innerHTML = `<div style="color: var(--text-muted); font-size: 0.8rem;">No suppliers registered yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = allSuppliers.map(s => {
+    const bal = s.total_balance || 0;
+    return `
+      <label style="display: flex; align-items: center; justify-content: space-between; padding: 5px 8px; border-radius: 4px; background: white; border: 1px solid #E2E8F0; cursor: pointer; margin-bottom: 2px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" class="report-sup-checkbox" value="${s.name}" checked>
+          <span style="font-weight: 600; font-size: 0.82rem; color: var(--text-main);">${s.name}</span>
+        </div>
+        <span style="font-size: 0.75rem; color: ${bal > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 700;">
+          SAR ${bal.toLocaleString('en-US', {minimumFractionDigits: 2})}
+        </span>
+      </label>
+    `;
+  }).join('');
+}
+
+function selectAllReportSuppliers(selectAll) {
+  document.querySelectorAll('.report-sup-checkbox').forEach(cb => {
+    cb.checked = selectAll;
+  });
+}
+
+function submitGenerateApReportPdf() {
+  const scope = document.querySelector('input[name="ap-report-scope"]:checked')?.value || 'all';
+  let selectedVendors = [];
+
+  if (scope === 'custom') {
+    const checked = Array.from(document.querySelectorAll('.report-sup-checkbox:checked')).map(cb => cb.value);
+    if (checked.length === 0) {
+      showToast('Please select at least one supplier to include in the report.', 'error');
+      return;
+    }
+    selectedVendors = checked;
+  }
+
+  const status = document.getElementById('ap-report-status')?.value || '';
+  const startDate = document.getElementById('ap-report-start-date')?.value || '';
+  const endDate = document.getElementById('ap-report-end-date')?.value || '';
+
   const token = localStorage.getItem('jwt_token') || '';
-  window.open(`/api/suppliers/export/pdf?token=${encodeURIComponent(token)}`, '_blank');
+
+  let url = `/api/suppliers/export/pdf?token=${encodeURIComponent(token)}&`;
+  if (selectedVendors.length > 0) {
+    url += `suppliers=${encodeURIComponent(selectedVendors.join(','))}&`;
+  }
+  if (status) url += `status=${encodeURIComponent(status)}&`;
+  if (startDate) url += `start_date=${encodeURIComponent(startDate)}&`;
+  if (endDate) url += `end_date=${encodeURIComponent(endDate)}&`;
+
+  closeModal('modal-export-ap-report');
+  window.open(url, '_blank');
+  showToast('Accounts Payable PDF Report generated!');
 }
 
 // 7. SUPPLIER PAYMENTS & AP
