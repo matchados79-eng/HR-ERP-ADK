@@ -230,6 +230,64 @@ def test_payroll_and_wps():
     del_res = client.delete(f"/api/payroll/runs/{run_id}", headers=headers)
     assert del_res.status_code == 200
 
+def test_monthly_worker_payroll_tracking():
+    """Test individual monthly worker payroll roster, auto-population, adjustments, payslip PDF, and consolidated schedule PDF."""
+    token = auth.create_jwt_token({"user_id": 1, "email": "admin@adknprotech.com", "role": "admin", "full_name": "Admin"})
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # 1. Clean any previous test run for January 2026
+    existing = db.query_one("SELECT id FROM payroll_runs WHERE payroll_month = 1 AND payroll_year = 2026")
+    if existing:
+        client.delete(f"/api/payroll/runs/{existing['id']}", headers=headers)
+        
+    # 2. Get initial empty roster
+    r_res = client.get("/api/payroll/monthly-roster?month=1&year=2026", headers=headers)
+    assert r_res.status_code == 200
+    assert r_res.json()["has_run"] is False
+    
+    # 3. 1-Click Auto-Populate Roster
+    pop_res = client.post("/api/payroll/monthly-roster/populate", json={"month": 1, "year": 2026}, headers=headers)
+    assert pop_res.status_code == 200
+    
+    # 4. Verify populated workers
+    r_after = client.get("/api/payroll/monthly-roster?month=1&year=2026", headers=headers)
+    assert r_after.status_code == 200
+    workers = r_after.json()["workers"]
+    assert len(workers) > 0
+    first_worker = workers[0]
+    
+    # 5. Adjust an individual worker's pay (e.g. Add 1,500 SAR bonus for January)
+    adj_res = client.post("/api/payroll/monthly-roster/worker", json={
+        "month": 1,
+        "year": 2026,
+        "employee_id": first_worker["employee_id"],
+        "basic_salary": first_worker["basic_salary"],
+        "housing_allowance": first_worker["housing_allowance"],
+        "transport_allowance": first_worker["transport_allowance"],
+        "other_allowances": 1500.0,
+        "other_deductions": 0.0,
+        "remarks": "January engineering milestone bonus"
+    }, headers=headers)
+    assert adj_res.status_code == 200
+    
+    # 6. Verify 1-click individual worker payslip PDF download
+    detail_id = first_worker["id"]
+    ps_pdf = client.get(f"/api/payroll/details/{detail_id}/payslip.pdf?token={token}")
+    assert ps_pdf.status_code == 200
+    assert len(ps_pdf.content) > 1000
+    assert ps_pdf.headers["content-type"] == "application/pdf"
+    
+    # 7. Verify consolidated Monthly Payroll Schedule PDF export
+    sched_pdf = client.get(f"/api/payroll/monthly-roster/export/pdf?month=1&year=2026&token={token}")
+    assert sched_pdf.status_code == 200
+    assert len(sched_pdf.content) > 1000
+    assert sched_pdf.headers["content-type"] == "application/pdf"
+    
+    # 8. Remove worker from roster
+    rem_res = client.delete(f"/api/payroll/monthly-roster/worker/{detail_id}", headers=headers)
+    assert rem_res.status_code == 200
+
+
 def test_supplier_payments_and_disbursals():
     """Test Supplier Payments recording, partial disbursals, aging, and PDF statement generation."""
     token = auth.create_jwt_token({"user_id": 1, "email": "admin@alamal-ksa.com", "role": "admin", "full_name": "Admin"})

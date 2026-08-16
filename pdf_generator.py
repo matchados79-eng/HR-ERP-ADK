@@ -922,3 +922,216 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
     </html>
     """
     return html_to_pdf_playwright(html)
+
+
+# =========================================================================
+# 4. EXECUTIVE MONTHLY PAYROLL & WORKER SALARY SCHEDULE PDF
+# =========================================================================
+def generate_monthly_payroll_schedule_pdf(
+    month: int,
+    year: int,
+    workers: List[Dict[str, Any]],
+    company_info: Dict[str, Any]
+) -> bytes:
+    """
+    Generates an executive-grade Monthly Payroll & Worker Salary Schedule PDF
+    using Playwright with ADK Co., LTD. corporate branding, summary KPI cards,
+    individual worker salary breakdowns, GOSI contributions, net payouts, and authorization blocks.
+    """
+    company_name = company_info.get("company_name", "ADK Co., LTD.")
+    ar_name = company_info.get("company_arabic_name", "شركة إيه دي كيه للخدمات الصناعية المحدودة")
+    cr_num = company_info.get("cr_number", "2055001234")
+    address = company_info.get("address", "2837, B13, Tebah District, Al Jubail, Kingdom of Saudi Arabia")
+    
+    pay_period_str = format_pay_period(month, year)
+    gen_time = format_long_datetime()
+    
+    tot_basic = sum(float(w.get("basic_salary", 0)) for w in workers)
+    tot_housing = sum(float(w.get("housing_allowance", 0)) for w in workers)
+    tot_transport = sum(float(w.get("transport_allowance", 0)) for w in workers)
+    tot_other_allow = sum(float(w.get("other_allowances", 0)) for w in workers)
+    tot_gross = sum(float(w.get("gross_salary", 0)) for w in workers)
+    tot_gosi = sum(float(w.get("gosi_employee", 0)) for w in workers)
+    tot_other_ded = sum(float(w.get("other_deductions", 0)) for w in workers)
+    tot_net = sum(float(w.get("net_salary", 0)) for w in workers)
+    
+    worker_rows_html = ""
+    if not workers:
+        worker_rows_html = '<tr><td colspan="10" class="text-center" style="padding: 14px;">No workers registered on payroll for this month.</td></tr>'
+    else:
+        for idx, w in enumerate(workers, 1):
+            emp_code = w.get("emp_code", f"EMP-{w.get('id', idx)}")
+            emp_name = f"{w.get('first_name', '')} {w.get('last_name', '')}".strip()
+            is_saudi = w.get("is_saudi") == 1
+            nat_badge = '<span class="badge badge-saudi">SAUDI</span>' if is_saudi else '<span class="badge badge-expat">EXPAT</span>'
+            dept_name = w.get("department_name", "Operations")
+            
+            b = float(w.get("basic_salary", 0))
+            h = float(w.get("housing_allowance", 0))
+            t_o = float(w.get("transport_allowance", 0)) + float(w.get("other_allowances", 0))
+            gr = float(w.get("gross_salary", b + h + t_o))
+            gosi = float(w.get("gosi_employee", 0))
+            o_ded = float(w.get("other_deductions", 0))
+            net = float(w.get("net_salary", gr - gosi - o_ded))
+            
+            worker_rows_html += f"""
+            <tr>
+              <td><strong>{emp_code}</strong></td>
+              <td><strong>{emp_name}</strong> {nat_badge}</td>
+              <td>{dept_name}</td>
+              <td class="num">{b:,.2f}</td>
+              <td class="num">{h:,.2f}</td>
+              <td class="num">{t_o:,.2f}</td>
+              <td class="num font-blue bold">{gr:,.2f}</td>
+              <td class="num font-red">{gosi:,.2f}</td>
+              <td class="num">{o_ded:,.2f}</td>
+              <td class="num font-green bold">SAR {net:,.2f}</td>
+            </tr>
+            """
+            
+    html = f"""<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Monthly Payroll Schedule - {pay_period_str}</title>
+      <style>
+        @page {{ size: letter landscape; margin: 0; }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }}
+        body {{ background-color: #FFFFFF; color: #0F172A; padding: 14px 18px; font-size: 7.5pt; line-height: 1.3; }}
+        .header-banner {{
+          background: linear-gradient(135deg, #0A1128 0%, #0047AB 100%);
+          color: #FFFFFF; padding: 10px 14px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #D97706;
+        }}
+        .header-left .comp-title {{ font-size: 12pt; font-weight: 800; }}
+        .header-left .comp-ar {{ font-size: 8pt; color: #BFDBFE; margin-top: 1px; }}
+        .header-left .comp-meta {{ font-size: 6.8pt; color: #94A3B8; margin-top: 2px; }}
+        .header-right {{ text-align: right; }}
+        .header-right .doc-badge {{ font-size: 11pt; font-weight: 800; color: #FEF3C7; }}
+        .header-right .doc-ar {{ font-size: 7.5pt; color: #FDE68A; }}
+        .header-right .doc-meta {{ font-size: 6.8pt; color: #BFDBFE; margin-top: 2px; }}
+        
+        .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }}
+        .kpi-card {{ padding: 6px 10px; border-radius: 5px; border: 1px solid #CBD5E1; text-align: center; }}
+        .kpi-card.blue {{ background: #EFF6FF; border-color: #BFDBFE; }}
+        .kpi-card.green {{ background: #ECFDF5; border-color: #A7F3D0; }}
+        .kpi-card.red {{ background: #FEF2F2; border-color: #FECACA; }}
+        .kpi-card.gold {{ background: #FEF3C7; border-color: #FDE68A; }}
+        .kpi-label {{ font-size: 6pt; font-weight: 700; color: #64748B; text-transform: uppercase; }}
+        .kpi-val {{ font-size: 11pt; font-weight: 800; color: #0F172A; margin: 1px 0; }}
+        .kpi-sub {{ font-size: 6pt; font-weight: 700; }}
+        
+        .data-table {{ width: 100%; border-collapse: collapse; font-size: 7pt; border: 1px solid #CBD5E1; margin-bottom: 8px; }}
+        .data-table th {{ background: #0A1128; color: #FFFFFF; font-weight: 700; padding: 4px 6px; text-align: left; font-size: 6.5pt; }}
+        .data-table td {{ padding: 3px 6px; border-bottom: 1px solid #E2E8F0; }}
+        .data-table tbody tr:nth-child(even) {{ background-color: #F8FAFC; }}
+        .data-table tfoot td {{ background-color: #E2E8F0; font-weight: 700; color: #0F172A; border-top: 1.5px solid #64748B; }}
+        
+        .badge {{ display: inline-block; padding: 1px 4px; border-radius: 2px; font-size: 5.5pt; font-weight: 700; }}
+        .badge-saudi {{ background: #DCFCE7; color: #15803D; border: 1px solid #86EFAC; }}
+        .badge-expat {{ background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; }}
+        
+        .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+        .font-blue {{ color: #0047AB; }}
+        .font-green {{ color: #065F46; }}
+        .font-red {{ color: #991B1B; }}
+        .bold {{ font-weight: 700; }}
+        .text-center {{ text-align: center; }}
+        
+        .sig-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }}
+        .sig-card {{ background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 5px; padding: 6px 10px; text-align: center; }}
+        .sig-title {{ font-size: 6.8pt; font-weight: 700; color: #0F172A; margin-bottom: 1px; }}
+        .sig-dept {{ font-size: 6.2pt; color: #64748B; margin-bottom: 12px; }}
+        .sig-line {{ border-top: 1px solid #94A3B8; padding-top: 2px; font-size: 6pt; color: #64748B; }}
+        .footer-note {{ text-align: center; font-size: 6pt; color: #94A3B8; margin-top: 4px; }}
+      </style>
+    </head>
+    <body>
+      <div class="header-banner">
+        <div class="header-left">
+          <div class="comp-title">🏢 {company_name}</div>
+          <div class="comp-ar">{ar_name}</div>
+          <div class="comp-meta">Commercial Reg: {cr_num} • Al Jubail, Saudi Arabia • www.adknprotech.com</div>
+        </div>
+        <div class="header-right">
+          <div class="doc-badge">MONTHLY PAYROLL ROSTER | {pay_period_str.upper()}</div>
+          <div class="doc-ar">جدول مسير الرواتب الشهري المعتمد</div>
+          <div class="doc-meta">Generated: {gen_time} • Confidential</div>
+        </div>
+      </div>
+      
+      <div class="kpi-grid">
+        <div class="kpi-card blue">
+          <div class="kpi-label">TOTAL WORKERS ON PAYROLL</div>
+          <div class="kpi-val">{len(workers)} Active Staff</div>
+          <div class="kpi-sub" style="color: #0047AB;">● SAMA WPS Standard</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-label">TOTAL GROSS PAYABLE</div>
+          <div class="kpi-val" style="color: #0047AB;">SAR {tot_gross:,.2f}</div>
+          <div class="kpi-sub" style="color: #0047AB;">Basic + All Allowances</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-label">STATUTORY GOSI DEDUCTIONS</div>
+          <div class="kpi-val" style="color: #991B1B;">SAR {tot_gosi:,.2f}</div>
+          <div class="kpi-sub" style="color: #991B1B;">Social Insurance Share</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">NET SALARY OUTFLOW</div>
+          <div class="kpi-val" style="color: #065F46;">SAR {tot_net:,.2f}</div>
+          <div class="kpi-sub" style="color: #065F46;">● Disbursable Net Pay</div>
+        </div>
+      </div>
+      
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>EMP CODE</th>
+            <th>WORKER / EMPLOYEE NAME</th>
+            <th>DEPARTMENT</th>
+            <th class="num">BASIC (SAR)</th>
+            <th class="num">HOUSING (SAR)</th>
+            <th class="num">OTHER ALLOW.</th>
+            <th class="num">GROSS (SAR)</th>
+            <th class="num">GOSI (SAR)</th>
+            <th class="num">OTHER DED.</th>
+            <th class="num">NET SALARY (SAR)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {worker_rows_html}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3"><strong>CONSOLIDATED ROSTER TOTALS ({len(workers)} WORKERS):</strong></td>
+            <td class="num"><strong>SAR {tot_basic:,.2f}</strong></td>
+            <td class="num"><strong>SAR {tot_housing:,.2f}</strong></td>
+            <td class="num"><strong>SAR {tot_transport + tot_other_allow:,.2f}</strong></td>
+            <td class="num font-blue bold"><strong>SAR {tot_gross:,.2f}</strong></td>
+            <td class="num font-red bold"><strong>SAR {tot_gosi:,.2f}</strong></td>
+            <td class="num"><strong>SAR {tot_other_ded:,.2f}</strong></td>
+            <td class="num font-green bold"><strong>SAR {tot_net:,.2f}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+      
+      <div class="sig-grid">
+        <div class="sig-card">
+          <div class="sig-title">PREPARED BY: PAYROLL & HR OPERATIONS MANAGER</div>
+          <div class="sig-dept">ADK Human Resources & Payroll Division</div>
+          <div class="sig-line">Signature & Audit Verification</div>
+        </div>
+        <div class="sig-card">
+          <div class="sig-title">APPROVED BY: CHIEF FINANCIAL OFFICER (CFO) / MANAGING DIRECTOR</div>
+          <div class="sig-dept">ADK Executive Financial Leadership</div>
+          <div class="sig-line">Authorized Signature & Corporate Stamp</div>
+        </div>
+      </div>
+      
+      <div class="footer-note">
+        Page 1 of 1 | Strictly Confidential • ADK Co., LTD. Official Payroll Document under Saudi Labor Law & SAMA WPS
+      </div>
+    </body>
+    </html>
+    """
+    return html_to_pdf_playwright(html, landscape=True)
+

@@ -21,13 +21,13 @@ from google_drive_backup import generate_full_backup_archive, restore_from_backu
 from models import (
     DepartmentCreate, DepartmentUpdate, EmployeeCreate, EmployeeUpdate,
     LeaveCreate, LeaveStatusUpdate, EOSBRequest, GOSIRequest, PayrollRunRequest,
-    SupplierCreate, SupplierUpdate, SupplierPaymentCreate, SupplierPaymentStatusUpdate,
-    SupplierDisburseRequest, BackupRestoreRequest
+    WorkerMonthlyPayRequest, SupplierCreate, SupplierUpdate, SupplierPaymentCreate,
+    SupplierPaymentStatusUpdate, SupplierDisburseRequest, BackupRestoreRequest
 )
 from saudi_hr_engine import SaudiHREngine
 from pdf_generator import (
     generate_payslip_pdf, generate_supplier_statement_pdf,
-    generate_supplier_summary_report_pdf
+    generate_supplier_summary_report_pdf, generate_monthly_payroll_schedule_pdf
 )
 
 # Initialize DB schema & indexes
@@ -1353,8 +1353,284 @@ def get_payroll_run_details(run_id: int, user: dict = Depends(require_roles(["ad
     
     return {"run": run, "details": items}
 
+@app.get("/api/payroll/monthly-roster")
+def get_monthly_payroll_roster(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020, le=2050),
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Returns the monthly worker payroll roster for a specific month and year.
+    """
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (month, year))
+    
+    if not run:
+        return {
+            "month": month,
+            "year": year,
+            "has_run": False,
+            "run": None,
+            "workers": [],
+            "summary": {
+                "total_workers": 0,
+                "total_basic": 0.0,
+                "total_allowances": 0.0,
+                "total_gross": 0.0,
+                "total_gosi": 0.0,
+                "total_other_ded": 0.0,
+                "total_net": 0.0
+            }
+        }
+        
+    workers = db.query_all("""
+        SELECT pd.*, e.emp_code, e.first_name, e.last_name, e.national_id_iqama, e.is_saudi, e.designation,
+               e.bank_name, e.iban, d.name as department_name
+        FROM payroll_details pd
+        JOIN employees e ON pd.employee_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE pd.payroll_run_id = ?
+        ORDER BY e.emp_code ASC, e.id ASC
+    """, (run["id"],))
+    
+    tot_basic = sum(float(w["basic_salary"]) for w in workers)
+    tot_housing = sum(float(w["housing_allowance"]) for w in workers)
+    tot_transport = sum(float(w["transport_allowance"]) for w in workers)
+    tot_other_allow = sum(float(w["other_allowances"]) for w in workers)
+    tot_gross = sum(float(w["gross_salary"]) for w in workers)
+    tot_gosi = sum(float(w["gosi_employee"]) for w in workers)
+    tot_other_ded = sum(float(w["other_deductions"]) for w in workers)
+    tot_net = sum(float(w["net_salary"]) for w in workers)
+    
+    return {
+        "month": month,
+        "year": year,
+        "has_run": True,
+        "run": run,
+        "workers": workers,
+        "summary": {
+            "total_workers": len(workers),
+            "total_basic": round(tot_basic, 2),
+            "total_housing": round(tot_housing, 2),
+            "total_allowances": round(tot_housing + tot_transport + tot_other_allow, 2),
+            "total_gross": round(tot_gross, 2),
+            "total_gosi": round(tot_gosi, 2),
+            "total_other_ded": round(tot_other_ded, 2),
+            "total_net": round(tot_net, 2)
+        }
+    }
+
+@app.post("/api/payroll/monthly-roster/populate")
+def populate_monthly_payroll_roster(
+    req: PayrollRunRequest,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Auto-populates the monthly roster with all active employees and computes their standard contract salary & GOSI.
+    """
+    active_emps = db.query_all("SELECT * FROM employees WHERE status = 'Active'")
+    if not active_emps:
+        raise HTTPException(status_code=400, detail="No active employees found to populate payroll.")
+        
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (req.month, req.year))
+    if not run:
+        run_id = db.execute_cmd("""
+            INSERT INTO payroll_runs (payroll_month, payroll_year, total_basic, total_allowances, total_deductions, total_net_pay, status, processed_at)
+            VALUES (?, ?, 0.0, 0.0, 0.0, 0.0, 'Approved', ?)
+        """, (req.month, req.year, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    else:
+        run_id = run["id"]
+        
+    for emp in active_emps:
+        existing_detail = db.query_one("SELECT id FROM payroll_details WHERE payroll_run_id = ? AND employee_id = ?", (run_id, emp["id"]))
+        if existing_detail:
+            continue  # Keep existing adjusted values if already populated
+            
+        basic = float(emp["basic_salary"])
+        housing = float(emp["housing_allowance"])
+        transport = float(emp["transport_allowance"])
+        other = float(emp["other_allowances"])
+        gross = basic + housing + transport + other
+        
+        gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, housing)
+        gosi_emp = gosi_res["employee_deduction"]
+        gosi_empr = gosi_res["employer_contribution"]
+        net = gross - gosi_emp
+        
+        db.execute_cmd("""
+            INSERT INTO payroll_details (
+                payroll_run_id, employee_id, basic_salary, housing_allowance,
+                transport_allowance, other_allowances, gross_salary,
+                gosi_employee, gosi_employer, other_deductions, net_salary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (run_id, emp["id"], basic, housing, transport, other, gross, gosi_emp, gosi_empr, 0.0, net))
+        
+    # Recompute parent run totals
+    details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
+    tot_basic = sum(float(d["basic_salary"]) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"]) + float(d["transport_allowance"]) + float(d["other_allowances"]) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"]) + float(d["other_deductions"]) for d in details)
+    tot_net = sum(float(d["net_salary"]) for d in details)
+    
+    db.execute_cmd("""
+        UPDATE payroll_runs SET
+            total_basic = ?,
+            total_allowances = ?,
+            total_deductions = ?,
+            total_net_pay = ?
+        WHERE id = ?
+    """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
+    
+    return {"message": f"Successfully populated payroll for {len(details)} workers for {req.month}/{req.year}", "run_id": run_id}
+
+@app.post("/api/payroll/monthly-roster/worker")
+def save_worker_monthly_pay(
+    req: WorkerMonthlyPayRequest,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Adds or updates an individual worker's salary, allowances, and deductions for a specific month.
+    """
+    emp = db.query_one("SELECT * FROM employees WHERE id = ?", (req.employee_id,))
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee record not found.")
+        
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (req.month, req.year))
+    if not run:
+        run_id = db.execute_cmd("""
+            INSERT INTO payroll_runs (payroll_month, payroll_year, total_basic, total_allowances, total_deductions, total_net_pay, status, processed_at)
+            VALUES (?, ?, 0.0, 0.0, 0.0, 0.0, 'Approved', ?)
+        """, (req.month, req.year, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    else:
+        run_id = run["id"]
+        
+    basic = max(0.0, float(req.basic_salary))
+    housing = max(0.0, float(req.housing_allowance or 0.0))
+    transport = max(0.0, float(req.transport_allowance or 0.0))
+    other_allow = max(0.0, float(req.other_allowances or 0.0))
+    other_ded = max(0.0, float(req.other_deductions or 0.0))
+    gross = basic + housing + transport + other_allow
+    
+    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, basic, housing)
+    gosi_emp = gosi_res["employee_deduction"]
+    gosi_empr = gosi_res["employer_contribution"]
+    net = max(0.0, gross - gosi_emp - other_ded)
+    
+    existing_detail = db.query_one("SELECT id FROM payroll_details WHERE payroll_run_id = ? AND employee_id = ?", (run_id, req.employee_id))
+    if existing_detail:
+        db.execute_cmd("""
+            UPDATE payroll_details SET
+                basic_salary = ?,
+                housing_allowance = ?,
+                transport_allowance = ?,
+                other_allowances = ?,
+                gross_salary = ?,
+                gosi_employee = ?,
+                gosi_employer = ?,
+                other_deductions = ?,
+                net_salary = ?
+            WHERE id = ?
+        """, (basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net, existing_detail["id"]))
+        detail_id = existing_detail["id"]
+    else:
+        detail_id = db.execute_cmd("""
+            INSERT INTO payroll_details (
+                payroll_run_id, employee_id, basic_salary, housing_allowance,
+                transport_allowance, other_allowances, gross_salary,
+                gosi_employee, gosi_employer, other_deductions, net_salary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (run_id, req.employee_id, basic, housing, transport, other_allow, gross, gosi_emp, gosi_empr, other_ded, net))
+        
+    # Recompute parent run totals
+    details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
+    tot_basic = sum(float(d["basic_salary"]) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"]) + float(d["transport_allowance"]) + float(d["other_allowances"]) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"]) + float(d["other_deductions"]) for d in details)
+    tot_net = sum(float(d["net_salary"]) for d in details)
+    
+    db.execute_cmd("""
+        UPDATE payroll_runs SET
+            total_basic = ?,
+            total_allowances = ?,
+            total_deductions = ?,
+            total_net_pay = ?
+        WHERE id = ?
+    """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
+    
+    return {
+        "message": f"Successfully updated monthly payroll for {emp['first_name']} {emp['last_name']}",
+        "detail_id": detail_id,
+        "net_salary": net
+    }
+
+@app.delete("/api/payroll/monthly-roster/worker/{detail_id}")
+def delete_worker_monthly_pay(
+    detail_id: int,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Removes a worker from the monthly payroll roster.
+    """
+    detail = db.query_one("SELECT * FROM payroll_details WHERE id = ?", (detail_id,))
+    if not detail:
+        raise HTTPException(status_code=404, detail="Payroll detail item not found.")
+        
+    run_id = detail["payroll_run_id"]
+    db.execute_cmd("DELETE FROM payroll_details WHERE id = ?", (detail_id,))
+    
+    # Recompute parent run totals
+    details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
+    tot_basic = sum(float(d["basic_salary"]) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"]) + float(d["transport_allowance"]) + float(d["other_allowances"]) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"]) + float(d["other_deductions"]) for d in details)
+    tot_net = sum(float(d["net_salary"]) for d in details)
+    
+    db.execute_cmd("""
+        UPDATE payroll_runs SET
+            total_basic = ?,
+            total_allowances = ?,
+            total_deductions = ?,
+            total_net_pay = ?
+        WHERE id = ?
+    """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
+    
+    return {"message": "Worker removed from this month's payroll roster."}
+
+@app.get("/api/payroll/monthly-roster/export/pdf")
+def export_monthly_payroll_schedule_pdf(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020, le=2050),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Generates an executive consolidated Monthly Payroll Schedule PDF using Playwright.
+    """
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (month, year))
+    if not run:
+        workers = []
+    else:
+        workers = db.query_all("""
+            SELECT pd.*, e.emp_code, e.first_name, e.last_name, e.national_id_iqama, e.is_saudi, e.designation,
+                   e.bank_name, e.iban, d.name as department_name
+            FROM payroll_details pd
+            JOIN employees e ON pd.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE pd.payroll_run_id = ?
+            ORDER BY e.emp_code ASC, e.id ASC
+        """, (run["id"],))
+        
+    setting_rows = db.query_all("SELECT * FROM settings")
+    settings = {s["key"]: s["value"] for s in setting_rows}
+    
+    pdf_bytes = generate_monthly_payroll_schedule_pdf(month, year, workers, settings)
+    filename = f"ADK_Payroll_Schedule_{month:02d}_{year}.pdf"
+    
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={filename}"})
+
 @app.get("/api/payroll/details/{detail_id}/payslip.pdf")
-def download_payslip_pdf(detail_id: int, user: dict = Depends(require_roles(["admin", "hr_manager"]))):
+def download_payslip_pdf(
+    detail_id: int,
+    user: dict = Depends(get_current_user)
+):
     detail = db.query_one("SELECT pd.*, pr.payroll_month, pr.payroll_year FROM payroll_details pd JOIN payroll_runs pr ON pd.payroll_run_id = pr.id WHERE pd.id = ?", (detail_id,))
     if not detail:
         raise HTTPException(status_code=404, detail="Payroll detail item not found.")
@@ -1379,7 +1655,7 @@ def download_payslip_pdf(detail_id: int, user: dict = Depends(require_roles(["ad
     }
     
     pdf_bytes = generate_payslip_pdf(emp, pay_data, settings)
-    filename = f"Payslip_{emp['emp_code']}_{detail['payroll_month']}_{detail['payroll_year']}.pdf"
+    filename = f"ADK_Payslip_{emp['emp_code']}_{detail['payroll_month']}_{detail['payroll_year']}.pdf"
     
     return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={filename}"})
 

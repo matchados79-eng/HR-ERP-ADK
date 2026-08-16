@@ -1,4 +1,4 @@
-/* Saudi HR & SME Finance ERP System - Core Application Logic */
+/* ADK Co., LTD. (ADK N-Protech) Industrial ERP System - Core Application Logic */
 
 let currentEmployeeId = null;
 let currentTab = 'tab-info';
@@ -7,6 +7,8 @@ let allDepartments = [];
 let allEmployees = [];
 let allUsers = [];
 let allSupplierPayments = [];
+let currentRosterWorkers = [];
+let currentPayrollRunId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   checkAuthSession();
@@ -50,10 +52,12 @@ function checkAuthSession() {
     try {
       const u = JSON.parse(userJson);
       currentUserRole = u.role || 'viewer';
-      const nameElem = document.getElementById('user-display-name');
-      if (nameElem) nameElem.innerText = u.full_name || 'System User';
-      const roleElem = document.getElementById('user-display-role');
-      if (roleElem) roleElem.innerText = `Role: ${currentUserRole.toUpperCase()} • Active Session`;
+      const nameElem = document.getElementById('user-display-name') || document.getElementById('top-user-name');
+      if (nameElem) nameElem.innerText = u.full_name || 'ADK Administrator';
+      const roleElem = document.getElementById('user-display-role') || document.getElementById('top-user-role');
+      if (roleElem) roleElem.innerText = currentUserRole.toUpperCase();
+      const avatarElem = document.getElementById('top-user-avatar');
+      if (avatarElem) avatarElem.innerText = (u.full_name || 'AD').substring(0, 2).toUpperCase();
     } catch (e) {}
   }
 
@@ -62,7 +66,7 @@ function checkAuthSession() {
   loadDashboardData();
   loadDepartments();
   loadEmployees();
-  loadPayrollRuns();
+  loadMonthlyPayrollRoster();
   loadLeaves();
   loadSuppliersDirectory();
   loadSupplierPayments();
@@ -165,26 +169,28 @@ function switchSection(sectionId) {
   if (activeLink) activeLink.classList.add('active');
 
   const titleMap = {
-    'dashboard': ['HR Dashboard', 'Comprehensive overview of Saudi workforce, Saudization rates, and pending actions'],
+    'dashboard': ['Dashboard Overview', 'Comprehensive operational overview of workforce, compliance, and accounts payable'],
     'employees': ['Employee Directory', 'Manage employee profiles, Iqama details, GOSI numbers, and document vaults'],
     'departments': ['Department Management', 'Manage organizational departments, manager assignments, and annual budgets'],
-    'payroll': ['Payroll & WPS Engine', 'Process monthly salaries, generate SAMA WPS CSV files, and print PDF payslips'],
+    'payroll': ['Monthly Worker Payroll Tracking', 'Manage worker monthly salaries, automated payslips, GOSI contributions, and WPS exports'],
     'leaves': ['Leave Management', 'Track annual leave balances, sick leave requests, and approval workflows'],
     'compliance': ['Saudi Compliance Hub', 'Interactive EOSB (Articles 84/85/87), GOSI contributions, and Nitaqat tools'],
-    'suppliers': ['Supplier Payment Tracking', 'Track vendor invoices, supply dates, due dates, partial payments, and PDF statements'],
+    'suppliers': ['Pending Payments & Payables', 'Track pending vendor invoices, accounts payable liabilities, disbursements, and PDF exports'],
     'finance': ['Finance & Aging Analytics', 'Accounts Payable aging schedules, vendor liabilities, and cash outflow forecasting'],
     'settings': ['System & Users Settings', 'Configure company legal details, CR number, user accounts, and backups']
   };
 
+  const titleElem = document.getElementById('page-heading') || document.getElementById('current-section-title');
+  const subElem = document.getElementById('page-subheading') || document.getElementById('current-breadcrumb');
   if (titleMap[sectionId]) {
-    document.getElementById('page-heading').innerText = titleMap[sectionId][0];
-    document.getElementById('page-subheading').innerText = titleMap[sectionId][1];
+    if (titleElem) titleElem.innerText = titleMap[sectionId][0];
+    if (subElem) subElem.innerText = titleMap[sectionId][0];
   }
 
   if (sectionId === 'dashboard') loadDashboardData();
   if (sectionId === 'employees') loadEmployees();
   if (sectionId === 'departments') loadDepartments();
-  if (sectionId === 'payroll') loadPayrollRuns();
+  if (sectionId === 'payroll') loadMonthlyPayrollRoster();
   if (sectionId === 'leaves') loadLeaves();
   if (sectionId === 'suppliers') loadSupplierPayments();
   if (sectionId === 'finance') loadFinanceAnalytics();
@@ -828,7 +834,406 @@ async function deleteDocument(docId) {
   }
 }
 
-// 5. PAYROLL & WPS
+// 5. MONTHLY WORKER PAYROLL TRACKING & WPS ENGINE
+const MONTH_NAMES_MAP = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+async function loadMonthlyPayrollRoster() {
+  if (currentUserRole === 'viewer') return;
+  const monthSelect = document.getElementById('roster-select-month');
+  const yearInput = document.getElementById('roster-select-year');
+  if (!monthSelect || !yearInput) return;
+
+  const month = parseInt(monthSelect.value);
+  const year = parseInt(yearInput.value);
+
+  const titleElem = document.getElementById('payroll-active-period-title');
+  if (titleElem) {
+    titleElem.innerText = `Payroll Roster — ${MONTH_NAMES_MAP[month]} ${year}`;
+  }
+
+  const tbody = document.getElementById('payroll-roster-body');
+  const tfoot = document.getElementById('payroll-roster-foot');
+  const statusBanner = document.getElementById('roster-status-banner');
+
+  if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px;">Loading payroll data for ${MONTH_NAMES_MAP[month]} ${year}...</td></tr>`;
+
+  try {
+    const res = await fetch(`/api/payroll/monthly-roster?month=${month}&year=${year}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      showToast('Failed to fetch monthly payroll roster', 'error');
+      return;
+    }
+    const data = await res.json();
+    currentRosterWorkers = data.workers || [];
+    currentPayrollRunId = data.run ? data.run.id : null;
+
+    // Update KPI Cards
+    const sum = data.summary;
+    document.getElementById('roster-kpi-workers').innerText = `${sum.total_workers} Staff`;
+    document.getElementById('roster-kpi-gross').innerText = `SAR ${sum.total_gross.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('roster-kpi-gosi').innerText = `SAR ${sum.total_gosi.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('roster-kpi-net').innerText = `SAR ${sum.total_net.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+
+    if (statusBanner) {
+      if (data.has_run && currentRosterWorkers.length > 0) {
+        statusBanner.innerHTML = `<span style="color: #059669; font-weight: 700;">● Active Payroll Run #${data.run.id} (${currentRosterWorkers.length} Workers Verified)</span>`;
+      } else {
+        statusBanner.innerHTML = `<span style="color: #D97706; font-weight: 700;">⚠️ No workers registered for ${MONTH_NAMES_MAP[month]} ${year}. Click "Auto-Populate Roster" or "Add Worker".</span>`;
+      }
+    }
+
+    renderPayrollRosterTable(currentRosterWorkers, sum);
+    loadPayrollRuns(); // refresh historical runs list below
+
+  } catch (err) {
+    console.error('Error loading monthly payroll roster:', err);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--danger); padding: 20px;">Error loading roster: ${err}</td></tr>`;
+  }
+}
+
+function renderPayrollRosterTable(workers, sum) {
+  const tbody = document.getElementById('payroll-roster-body');
+  const tfoot = document.getElementById('payroll-roster-foot');
+  if (!tbody) return;
+
+  if (!workers || workers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="11" style="text-align: center; padding: 30px;">
+          <div style="font-size: 2rem; margin-bottom: 6px;">👥</div>
+          <div style="font-size: 0.95rem; font-weight: 700; color: #0F172A;">No workers on payroll for this month yet.</div>
+          <div style="font-size: 0.8rem; color: #64748B; margin-top: 4px;">Click the <strong>"⚡ 1-Click Auto-Populate Roster"</strong> button above to load all active staff.</div>
+        </td>
+      </tr>
+    `;
+    if (tfoot) tfoot.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = workers.map((w, idx) => {
+    const isSaudi = w.is_saudi === 1;
+    const natBadge = isSaudi ? '<span class="badge badge-saudi">SAUDI</span>' : '<span class="badge badge-expat">EXPAT</span>';
+    const totalOther = (w.transport_allowance || 0) + (w.other_allowances || 0);
+
+    return `
+      <tr>
+        <td><strong>${w.emp_code}</strong></td>
+        <td>
+          <div style="font-weight: 700; color: #0F172A;">${w.first_name} ${w.last_name} ${natBadge}</div>
+          <small style="color: #64748B;">${w.designation || 'Staff'} • ${w.national_id_iqama || ''}</small>
+        </td>
+        <td>${w.department_name || 'Operations'}</td>
+        <td style="text-align: right; font-weight: 600;">SAR ${w.basic_salary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right;">SAR ${(w.housing_allowance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right;">SAR ${totalOther.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 700; color: #0047AB;">SAR ${w.gross_salary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 600; color: #DC2626;">SAR ${w.gosi_employee.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; color: #64748B;">SAR ${(w.other_deductions || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 800; color: #059669; font-size: 0.95rem;">SAR ${w.net_salary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: center;">
+          <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; border-color: #0047AB; color: #0047AB;" onclick="openAdjustWorkerPayModal(${w.id})">
+              ✏️ Adjust
+            </button>
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; background: #EFF6FF;" onclick="downloadWorkerPayslipPdf(${w.id})">
+              📄 Payslip
+            </button>
+            ${currentUserRole === 'admin' ? `
+              <button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" title="Remove from this month" onclick="removeWorkerFromMonthlyPayroll(${w.id}, '${w.first_name} ${w.last_name}')">
+                🗑️
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (tfoot && sum) {
+    tfoot.innerHTML = `
+      <tr>
+        <td colspan="3" style="font-weight: 800; color: #0F172A;">MONTHLY ROSTER TOTALS (${workers.length} WORKERS):</td>
+        <td style="text-align: right; font-weight: 800;">SAR ${sum.total_basic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 800;">SAR ${sum.total_housing.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 800;">SAR ${(sum.total_allowances - sum.total_housing).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 900; color: #0047AB;">SAR ${sum.total_gross.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 800; color: #DC2626;">SAR ${sum.total_gosi.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 800; color: #64748B;">SAR ${sum.total_other_ded.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td style="text-align: right; font-weight: 900; color: #059669; font-size: 1rem;">SAR ${sum.total_net.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+        <td></td>
+      </tr>
+    `;
+  }
+}
+
+function filterPayrollRosterTable() {
+  const query = (document.getElementById('roster-worker-search').value || '').toLowerCase();
+  if (!query) {
+    renderPayrollRosterTable(currentRosterWorkers);
+    return;
+  }
+
+  const filtered = currentRosterWorkers.filter(w => 
+    (w.first_name + ' ' + w.last_name).toLowerCase().includes(query) ||
+    (w.emp_code || '').toLowerCase().includes(query) ||
+    (w.national_id_iqama || '').toLowerCase().includes(query) ||
+    (w.department_name || '').toLowerCase().includes(query)
+  );
+
+  renderPayrollRosterTable(filtered);
+}
+
+async function populateMonthlyRoster() {
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+
+  try {
+    showToast(`Populating roster for ${MONTH_NAMES_MAP[month]} ${year}...`, 'info');
+    const res = await fetch('/api/payroll/monthly-roster/populate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ month, year })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to populate roster', 'error');
+      return;
+    }
+
+    await loadMonthlyPayrollRoster();
+    showToast(`✅ Roster populated with active workforce for ${MONTH_NAMES_MAP[month]} ${year}!`);
+
+  } catch (err) {
+    showToast(`Population error: ${err}`, 'error');
+  }
+}
+
+function openAdjustWorkerPayModal(detailId) {
+  const worker = currentRosterWorkers.find(x => x.id === detailId);
+  if (!worker) return;
+
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+
+  document.getElementById('adjust-detail-id').value = worker.id;
+  document.getElementById('adjust-employee-id').value = worker.employee_id;
+  document.getElementById('adjust-is-saudi').value = worker.is_saudi;
+
+  document.getElementById('adjust-worker-title').innerText = `✏️ Adjust Pay: ${worker.first_name} ${worker.last_name}`;
+  document.getElementById('adjust-worker-period-subtitle').innerText = `Month of ${MONTH_NAMES_MAP[month]} ${year} • Code: ${worker.emp_code}`;
+  document.getElementById('adjust-worker-name-banner').innerText = `${worker.first_name} ${worker.last_name}`;
+  document.getElementById('adjust-worker-dept-banner').innerText = `${worker.department_name || 'Operations'} • ${worker.designation || 'Staff'}`;
+  
+  const natBadge = document.getElementById('adjust-worker-nat-badge');
+  natBadge.className = `badge ${worker.is_saudi === 1 ? 'badge-saudi' : 'badge-expat'}`;
+  natBadge.innerText = worker.is_saudi === 1 ? 'SAUDI NATIONAL' : 'EXPATRIATE';
+
+  document.getElementById('adjust-basic-salary').value = worker.basic_salary;
+  document.getElementById('adjust-housing-allowance').value = worker.housing_allowance || 0;
+  document.getElementById('adjust-transport-allowance').value = worker.transport_allowance || 0;
+  document.getElementById('adjust-other-allowance').value = worker.other_allowances || 0;
+  document.getElementById('adjust-other-deductions').value = worker.other_deductions || 0;
+  document.getElementById('adjust-remarks').value = '';
+
+  recalcAdjustWorkerPayLive();
+  openModal('modal-adjust-worker-pay');
+}
+
+function recalcAdjustWorkerPayLive() {
+  const isSaudi = parseInt(document.getElementById('adjust-is-saudi').value) === 1;
+  const basic = parseFloat(document.getElementById('adjust-basic-salary').value || 0);
+  const housing = parseFloat(document.getElementById('adjust-housing-allowance').value || 0);
+  const transport = parseFloat(document.getElementById('adjust-transport-allowance').value || 0);
+  const other = parseFloat(document.getElementById('adjust-other-allowance').value || 0);
+  const otherDed = parseFloat(document.getElementById('adjust-other-deductions').value || 0);
+
+  const gross = basic + housing + transport + other;
+  
+  // Saudi GOSI: 9.75% of (Basic + Housing), max eligible cap is 45,000 SAR
+  let gosi = 0.0;
+  if (isSaudi) {
+    const gosiBase = Math.min(basic + housing, 45000);
+    gosi = Math.round(gosiBase * 0.0975 * 100) / 100;
+  }
+
+  const net = Math.max(0, gross - gosi - otherDed);
+
+  document.getElementById('adjust-live-gross').innerText = `SAR ${gross.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-gosi').innerText = `SAR ${gosi.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-ded').innerText = `SAR ${otherDed.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('adjust-live-net').innerText = `SAR ${net.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+}
+
+async function submitSaveWorkerMonthlyPay() {
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+  const employee_id = parseInt(document.getElementById('adjust-employee-id').value);
+
+  const payload = {
+    month: month,
+    year: year,
+    employee_id: employee_id,
+    basic_salary: parseFloat(document.getElementById('adjust-basic-salary').value || 0),
+    housing_allowance: parseFloat(document.getElementById('adjust-housing-allowance').value || 0),
+    transport_allowance: parseFloat(document.getElementById('adjust-transport-allowance').value || 0),
+    other_allowances: parseFloat(document.getElementById('adjust-other-allowance').value || 0),
+    other_deductions: parseFloat(document.getElementById('adjust-other-deductions').value || 0),
+    remarks: document.getElementById('adjust-remarks').value || null
+  };
+
+  try {
+    const res = await fetch('/api/payroll/monthly-roster/worker', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to save worker pay', 'error');
+      return;
+    }
+
+    closeModal('modal-adjust-worker-pay');
+    await loadMonthlyPayrollRoster();
+    showToast('Worker monthly salary adjustments saved successfully!');
+
+  } catch (err) {
+    showToast(`Error saving pay: ${err}`, 'error');
+  }
+}
+
+function openAddWorkerToPayrollModal() {
+  const select = document.getElementById('add-payroll-emp-select');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">-- Select an Active Worker --</option>' + 
+    allEmployees.map(e => `<option value="${e.id}">${e.first_name} ${e.last_name} (${e.emp_code})</option>`).join('');
+
+  document.getElementById('add-payroll-basic').value = '';
+  document.getElementById('add-payroll-housing').value = '';
+  document.getElementById('add-payroll-transport').value = '';
+  document.getElementById('add-payroll-other').value = '';
+
+  openModal('modal-add-worker-payroll');
+}
+
+function populateNewWorkerSalaryDefaults() {
+  const empId = parseInt(document.getElementById('add-payroll-emp-select').value);
+  if (!empId) return;
+
+  const emp = allEmployees.find(x => x.id === empId);
+  if (!emp) return;
+
+  document.getElementById('add-payroll-basic').value = emp.basic_salary || 0;
+  document.getElementById('add-payroll-housing').value = emp.housing_allowance || 0;
+  document.getElementById('add-payroll-transport').value = emp.transport_allowance || 0;
+  document.getElementById('add-payroll-other').value = emp.other_allowances || 0;
+}
+
+async function submitAddWorkerToPayroll() {
+  const empId = parseInt(document.getElementById('add-payroll-emp-select').value);
+  if (!empId) {
+    showToast('Please select a worker', 'error');
+    return;
+  }
+
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+
+  const payload = {
+    month: month,
+    year: year,
+    employee_id: empId,
+    basic_salary: parseFloat(document.getElementById('add-payroll-basic').value || 0),
+    housing_allowance: parseFloat(document.getElementById('add-payroll-housing').value || 0),
+    transport_allowance: parseFloat(document.getElementById('add-payroll-transport').value || 0),
+    other_allowances: parseFloat(document.getElementById('add-payroll-other').value || 0),
+    other_deductions: 0.0
+  };
+
+  try {
+    const res = await fetch('/api/payroll/monthly-roster/worker', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to add worker', 'error');
+      return;
+    }
+
+    closeModal('modal-add-worker-payroll');
+    await loadMonthlyPayrollRoster();
+    showToast('Worker added to monthly roster!');
+
+  } catch (err) {
+    showToast(`Error adding worker: ${err}`, 'error');
+  }
+}
+
+async function removeWorkerFromMonthlyPayroll(detailId, workerName) {
+  if (!confirm(`Are you sure you want to remove ${workerName} from this month's payroll?`)) return;
+
+  try {
+    const res = await fetch(`/api/payroll/monthly-roster/worker/${detailId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to remove worker', 'error');
+      return;
+    }
+
+    await loadMonthlyPayrollRoster();
+    showToast(`${workerName} removed from this month's roster.`);
+
+  } catch (err) {
+    showToast(`Error: ${err}`, 'error');
+  }
+}
+
+function downloadWorkerPayslipPdf(detailId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/payroll/details/${detailId}/payslip.pdf?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function exportMonthlyPayrollPdf() {
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+  const token = localStorage.getItem('jwt_token') || '';
+
+  window.open(`/api/payroll/monthly-roster/export/pdf?month=${month}&year=${year}&token=${encodeURIComponent(token)}`, '_blank');
+}
+
+function downloadCurrentMonthWps() {
+  if (!currentPayrollRunId) {
+    showToast('Please execute or populate this month’s roster first to generate the SAMA WPS file.', 'info');
+    return;
+  }
+  downloadWpsFile(currentPayrollRunId);
+}
+
+function toggleHistoricalPayrollRuns() {
+  const container = document.getElementById('historical-payroll-runs-container');
+  const icon = document.getElementById('hist-runs-toggle-icon');
+  if (!container) return;
+
+  if (container.style.display === 'none') {
+    container.style.display = 'block';
+    if (icon) icon.innerText = '▲';
+    loadPayrollRuns();
+  } else {
+    container.style.display = 'none';
+    if (icon) icon.innerText = '▼';
+  }
+}
+
 async function loadPayrollRuns() {
   if (currentUserRole === 'viewer') return;
   try {
@@ -840,18 +1245,18 @@ async function loadPayrollRuns() {
     if (!tbody) return;
 
     if (runs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No payroll runs executed yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No historical payroll runs archived yet.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = runs.map(r => `
       <tr>
         <td><strong>#PR-${r.id}</strong></td>
-        <td>Period ${r.payroll_month}/${r.payroll_year}</td>
+        <td>${MONTH_NAMES_MAP[r.payroll_month] || r.payroll_month} ${r.payroll_year}</td>
         <td>SAR ${r.total_basic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
         <td>SAR ${r.total_allowances.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
         <td>SAR ${r.total_deductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-        <td><strong style="color: var(--primary); font-size: 1rem;">SAR ${r.total_net_pay.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
+        <td><strong style="color: var(--primary); font-size: 0.95rem;">SAR ${r.total_net_pay.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></td>
         <td><span class="badge badge-active">${r.status}</span></td>
         <td>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -876,37 +1281,6 @@ async function loadPayrollRuns() {
   }
 }
 
-function openRunPayrollModal() {
-  openModal('modal-run-payroll');
-}
-
-async function submitGeneratePayroll() {
-  const month = parseInt(document.getElementById('payroll-month').value);
-  const year = parseInt(document.getElementById('payroll-year').value);
-
-  try {
-    const res = await fetch('/api/payroll/generate', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ month, year })
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      showToast(err.detail || 'Payroll execution failed', 'error');
-      return;
-    }
-
-    closeModal('modal-run-payroll');
-    loadPayrollRuns();
-    loadDashboardData();
-    showToast('Monthly Payroll processed! WPS file and PDF payslips ready.');
-
-  } catch (err) {
-    showToast(`Payroll processing failed: ${err}`, 'error');
-  }
-}
-
 async function deletePayrollRun(runId) {
   if (!confirm(`Are you sure you want to delete Payroll Run #${runId}?`)) return;
 
@@ -922,11 +1296,21 @@ async function deletePayrollRun(runId) {
     }
 
     loadPayrollRuns();
+    loadMonthlyPayrollRoster();
     loadDashboardData();
     showToast('Payroll run deleted successfully.');
   } catch (err) {
     showToast(`Delete error: ${err}`, 'error');
   }
+}
+
+function openPayslipPdf(detailId) {
+  downloadWorkerPayslipPdf(detailId);
+}
+
+function downloadWpsFile(runId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/payroll/runs/${runId}/wps.csv?token=${encodeURIComponent(token)}`, '_blank');
 }
 
 async function viewPayrollDetails(runId) {
@@ -940,7 +1324,7 @@ async function viewPayrollDetails(runId) {
         <table class="data-table">
           <thead>
             <tr>
-              <th>Employee</th>
+              <th>Worker</th>
               <th>Basic</th>
               <th>Allowances</th>
               <th>GOSI Deduction</th>
@@ -957,7 +1341,7 @@ async function viewPayrollDetails(runId) {
                 <td>SAR ${d.gosi_employee.toLocaleString()}</td>
                 <td><strong style="color: var(--primary);">SAR ${d.net_salary.toLocaleString()}</strong></td>
                 <td>
-                  <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openPayslipPdf(${d.id})">
+                  <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="downloadWorkerPayslipPdf(${d.id})">
                     📄 Payslip PDF
                   </button>
                 </td>
@@ -973,7 +1357,7 @@ async function viewPayrollDetails(runId) {
     m.innerHTML = `
       <div class="modal-box" style="max-width: 800px;">
         <div class="modal-header">
-          <h3 class="modal-title">Payroll Period: ${data.run.payroll_month}/${data.run.payroll_year}</h3>
+          <h3 class="modal-title">Payroll Period: ${MONTH_NAMES_MAP[data.run.payroll_month] || data.run.payroll_month} ${data.run.payroll_year}</h3>
           <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
         </div>
         <div class="modal-body">${popupContent}</div>

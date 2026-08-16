@@ -76,7 +76,7 @@
       </li>
       <li class="nav-item" id="nav-payroll-item">
         <a class="nav-link" data-section="payroll" onclick="switchSection('payroll')">
-          <span class="nav-icon">💵</span> Payroll & WPS Engine
+          <span class="nav-icon">💵</span> Monthly Payroll Tracking
         </a>
       </li>
       <li class="nav-item">
@@ -91,7 +91,7 @@
       </li>
       <li class="nav-item" id="nav-suppliers-item">
         <a class="nav-link" data-section="suppliers" onclick="switchSection('suppliers')">
-          <span class="nav-icon">🏢</span> Supplier Payments
+          <span class="nav-icon">💳</span> Pending Payments
         </a>
       </li>
       <li class="nav-item" id="nav-finance-item">
@@ -108,7 +108,7 @@
     
     <div class="sidebar-footer">
       <div>Ministry Compliant • SAMA WPS Ready</div>
-      <small>Enterprise ERP v3.4.0</small>
+      <small>ADK Co., LTD. ERP v3.5.0</small>
     </div>
   </aside>
 
@@ -313,37 +313,175 @@
       </div>
     </section>
 
-    <!-- SECTION 4: PAYROLL & WPS ENGINE -->
+    <!-- SECTION 4: MONTHLY WORKER PAYROLL TRACKING & WPS ENGINE -->
     <section id="section-payroll" class="content-section">
-      <div class="card">
-        <div class="card-header">
+      
+      <!-- Month & Year Selector Controls Bar -->
+      <div class="card" style="background: linear-gradient(135deg, #0A1128 0%, #0047AB 100%); color: #FFF; border: none; margin-bottom: 18px; box-shadow: var(--shadow-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; padding: 6px 2px;">
           <div>
-            <h3 class="card-title">💵 Monthly Payroll Runs & SAMA WPS Engine</h3>
-            <p style="font-size: 0.82rem; color: var(--text-muted);">Processes automatic GOSI deductions, allowances, net salaries, and SAMA compliant CSV files.</p>
+            <div style="font-size: 0.75rem; color: #BFDBFE; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">MONTHLY PAYROLL TRACKING BY WORKER</div>
+            <h2 style="font-size: 1.4rem; font-weight: 800; color: #FFF;" id="payroll-active-period-title">Payroll Roster — August 2026</h2>
           </div>
-          <button class="btn btn-primary" onclick="openRunPayrollModal()">+ Execute Monthly Payroll Run</button>
+          
+          <!-- Month & Year Selectors -->
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #E0F2FE;">Month:</span>
+              <select id="roster-select-month" class="form-control" style="background: #FFF; color: #0F172A; font-weight: 700; padding: 6px 10px; border-radius: 6px; width: 140px;" onchange="loadMonthlyPayrollRoster()">
+                <option value="1">January (01)</option>
+                <option value="2">February (02)</option>
+                <option value="3">March (03)</option>
+                <option value="4">April (04)</option>
+                <option value="5">May (05)</option>
+                <option value="6">June (06)</option>
+                <option value="7">July (07)</option>
+                <option value="8" selected>August (08)</option>
+                <option value="9">September (09)</option>
+                <option value="10">October (10)</option>
+                <option value="11">November (11)</option>
+                <option value="12">December (12)</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+              <span style="font-size: 0.8rem; font-weight: 700; color: #E0F2FE;">Year:</span>
+              <input type="number" id="roster-select-year" class="form-control" value="2026" style="background: #FFF; color: #0F172A; font-weight: 700; padding: 6px 10px; border-radius: 6px; width: 90px;" onchange="loadMonthlyPayrollRoster()">
+            </div>
+
+            <button class="btn btn-outline" style="background: rgba(255,255,255,0.15); color: #FFF; border-color: rgba(255,255,255,0.3);" onclick="loadMonthlyPayrollRoster()">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Monthly KPI Metric Strip -->
+      <div class="grid-4">
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Active Workers on Roster</div>
+            <div class="stat-val" id="roster-kpi-workers" style="color: var(--primary);">0 Staff</div>
+          </div>
+          <div class="stat-icon">👥</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Total Gross Earnings</div>
+            <div class="stat-val" id="roster-kpi-gross">SAR 0.00</div>
+          </div>
+          <div class="stat-icon">💵</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Statutory GOSI Deductions</div>
+            <div class="stat-val" id="roster-kpi-gosi" style="color: var(--danger);">SAR 0.00</div>
+          </div>
+          <div class="stat-icon">🛡️</div>
+        </div>
+
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Net Salary Outflow</div>
+            <div class="stat-val" id="roster-kpi-net" style="color: var(--success);">SAR 0.00</div>
+          </div>
+          <div class="stat-icon">💳</div>
+        </div>
+      </div>
+
+      <!-- Worker Monthly Roster Table Card -->
+      <div class="card">
+        <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h3 class="card-title">👥 Individual Worker Payroll Schedule</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+              Manage individual monthly salaries, bonuses, and allowances with instant 1-click automated payslips.
+            </p>
+          </div>
+
+          <!-- Roster Quick Actions -->
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-outline" style="border-color: #0047AB; color: #0047AB; font-weight: 700;" onclick="populateMonthlyRoster()">
+              ⚡ 1-Click Auto-Populate Roster
+            </button>
+            <button class="btn btn-primary" onclick="openAddWorkerToPayrollModal()">
+              ➕ Add Worker to Month
+            </button>
+            <button class="btn btn-outline" onclick="exportMonthlyPayrollPdf()">
+              📄 Export Monthly PDF
+            </button>
+            <button class="btn btn-outline" onclick="downloadCurrentMonthWps()">
+              📥 SAMA WPS CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Worker Search & Filter Strip -->
+        <div style="padding: 12px 20px; background: #F8FAFC; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <input type="text" id="roster-worker-search" class="form-control" placeholder="Search worker by name, code, Iqama..." style="max-width: 320px;" oninput="filterPayrollRosterTable()">
+          <div style="font-size: 0.8rem; color: var(--text-muted);" id="roster-status-banner">
+            <!-- Populated by JS -->
+          </div>
         </div>
 
         <div class="table-responsive">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Run ID</th>
-                <th>Period</th>
-                <th>Total Basic</th>
-                <th>Total Allowances</th>
-                <th>GOSI Deductions</th>
-                <th>Net Outflow</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>Code</th>
+                <th>Worker / Employee</th>
+                <th>Department</th>
+                <th style="text-align: right;">Basic (SAR)</th>
+                <th style="text-align: right;">Housing (SAR)</th>
+                <th style="text-align: right;">Other / Bonus</th>
+                <th style="text-align: right; color: var(--primary);">Gross (SAR)</th>
+                <th style="text-align: right; color: var(--danger);">GOSI (SAR)</th>
+                <th style="text-align: right;">Other Ded.</th>
+                <th style="text-align: right; color: var(--success); font-weight: 800;">Net Salary (SAR)</th>
+                <th style="text-align: center;">Actions</th>
               </tr>
             </thead>
-            <tbody id="payroll-runs-body">
-              <tr><td colspan="8" style="text-align: center;">Loading payroll runs...</td></tr>
+            <tbody id="payroll-roster-body">
+              <tr><td colspan="11" style="text-align: center; padding: 24px;">Select month or click "Auto-Populate Roster" to load workers.</td></tr>
             </tbody>
+            <tfoot id="payroll-roster-foot" style="background: #F1F5F9; font-weight: 700;">
+              <!-- Totals populated by JS -->
+            </tfoot>
           </table>
         </div>
       </div>
+
+      <!-- Collapsible Historical Payroll Runs Table -->
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-header" style="cursor: pointer;" onclick="toggleHistoricalPayrollRuns()">
+          <h3 class="card-title">📊 Historical Monthly Payroll Runs Archive <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(Click to expand/collapse)</span></h3>
+          <span id="hist-runs-toggle-icon">▼</span>
+        </div>
+        <div id="historical-payroll-runs-container" style="display: none;">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Run ID</th>
+                  <th>Period</th>
+                  <th>Total Basic</th>
+                  <th>Total Allowances</th>
+                  <th>GOSI Deductions</th>
+                  <th>Net Outflow</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="payroll-runs-body">
+                <tr><td colspan="8" style="text-align: center;">Loading historical runs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </section>
 
     <!-- SECTION 5: LEAVE MANAGEMENT -->
@@ -1787,6 +1925,142 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-user')">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADJUST WORKER MONTHLY PAY -->
+  <div id="modal-adjust-worker-pay" class="modal-overlay">
+    <div class="modal-box" style="max-width: 600px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="adjust-worker-title">✏️ Adjust Monthly Worker Pay</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;" id="adjust-worker-period-subtitle">
+            Month of August 2026
+          </p>
+        </div>
+        <button class="modal-close" onclick="closeModal('modal-adjust-worker-pay')">&times;</button>
+      </div>
+      <form id="adjust-worker-form" onsubmit="event.preventDefault(); submitSaveWorkerMonthlyPay();">
+        <input type="hidden" id="adjust-detail-id">
+        <input type="hidden" id="adjust-employee-id">
+        <input type="hidden" id="adjust-is-saudi">
+
+        <div class="modal-body">
+          <!-- Worker Info Banner -->
+          <div style="background: #EFF6FF; border: 1px solid #BFDBFE; padding: 12px; border-radius: 8px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 800; font-size: 1rem; color: #0047AB;" id="adjust-worker-name-banner">Ahmed Al-Mansoor</div>
+              <div style="font-size: 0.78rem; color: #64748B;" id="adjust-worker-dept-banner">Operations • Senior Structural Engineer</div>
+            </div>
+            <span class="badge badge-saudi" id="adjust-worker-nat-badge">SAUDI NATIONAL</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label style="font-weight: 700;">Basic Salary (SAR) *</label>
+              <input type="number" step="0.01" id="adjust-basic-salary" class="form-control" required oninput="recalcAdjustWorkerPayLive()">
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700;">Housing Allowance (SAR)</label>
+              <input type="number" step="0.01" id="adjust-housing-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Transport Allowance (SAR)</label>
+              <input type="number" step="0.01" id="adjust-transport-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+            </div>
+            <div class="form-group">
+              <label>Overtime, Bonus & Other (SAR)</label>
+              <input type="number" step="0.01" id="adjust-other-allowance" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Other Deductions / Penalties / Absences (SAR)</label>
+            <input type="number" step="0.01" id="adjust-other-deductions" class="form-control" value="0.00" oninput="recalcAdjustWorkerPayLive()">
+          </div>
+
+          <!-- Live Computation Strip -->
+          <div style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 14px; margin-top: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
+              <div>
+                <div style="font-size: 0.68rem; color: #64748B; font-weight: 700;">GROSS PAYABLE</div>
+                <div style="font-size: 1rem; font-weight: 800; color: #0047AB;" id="adjust-live-gross">SAR 0.00</div>
+              </div>
+              <div>
+                <div style="font-size: 0.68rem; color: #991B1B; font-weight: 700;">GOSI (STATUTORY)</div>
+                <div style="font-size: 1rem; font-weight: 800; color: #DC2626;" id="adjust-live-gosi">SAR 0.00</div>
+              </div>
+              <div>
+                <div style="font-size: 0.68rem; color: #64748B; font-weight: 700;">OTHER DED.</div>
+                <div style="font-size: 1rem; font-weight: 800; color: #64748B;" id="adjust-live-ded">SAR 0.00</div>
+              </div>
+              <div>
+                <div style="font-size: 0.68rem; color: #065F46; font-weight: 700;">NET DISBURSABLE</div>
+                <div style="font-size: 1.1rem; font-weight: 900; color: #059669;" id="adjust-live-net">SAR 0.00</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label>Adjustment Remarks / Justification</label>
+            <input type="text" id="adjust-remarks" class="form-control" placeholder="e.g. Approved 15 hours overtime + project completion bonus">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-adjust-worker-pay')">Cancel</button>
+          <button type="submit" class="btn btn-primary">💾 Save Worker Monthly Pay</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD WORKER TO MONTHLY PAYROLL -->
+  <div id="modal-add-worker-payroll" class="modal-overlay">
+    <div class="modal-box" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">➕ Add Worker to Monthly Roster</h3>
+        <button class="modal-close" onclick="closeModal('modal-add-worker-payroll')">&times;</button>
+      </div>
+      <form onsubmit="event.preventDefault(); submitAddWorkerToPayroll();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label style="font-weight: 700;">Select Worker / Employee *</label>
+            <select id="add-payroll-emp-select" class="form-control" required onchange="populateNewWorkerSalaryDefaults()">
+              <!-- Loaded by JS -->
+            </select>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Monthly Basic Salary (SAR) *</label>
+              <input type="number" step="0.01" id="add-payroll-basic" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Housing Allowance (SAR)</label>
+              <input type="number" step="0.01" id="add-payroll-housing" class="form-control">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Transport Allowance (SAR)</label>
+              <input type="number" step="0.01" id="add-payroll-transport" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Other / Bonus (SAR)</label>
+              <input type="number" step="0.01" id="add-payroll-other" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-add-worker-payroll')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add to Roster</button>
         </div>
       </form>
     </div>

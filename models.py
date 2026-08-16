@@ -146,5 +146,17 @@ class PayrollRunRequest(BaseModel):
     month: int
     year: int
 
+class WorkerMonthlyPayRequest(BaseModel):
+    month: int
+    year: int
+    employee_id: int
+    basic_salary: float
+    housing_allowance: Optional[float] = 0.0
+    transport_allowance: Optional[float] = 0.0
+    other_allowances: Optional[float] = 0.0
+    other_deductions: Optional[float] = 0.0
+    remarks: Optional[str] = None
+
 class BackupRestoreRequest(BaseModel):
     backup_json: Optional[str] = None
+
