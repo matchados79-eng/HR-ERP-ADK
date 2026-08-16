@@ -59,7 +59,7 @@ function showToast(message, type = 'success') {
 }
 
 // Authentication & Role Handlers
-function checkAuthSession() {
+async function checkAuthSession() {
   const token = localStorage.getItem('jwt_token');
   const userJson = localStorage.getItem('jwt_user');
 
@@ -68,10 +68,25 @@ function checkAuthSession() {
     return;
   }
 
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      localStorage.removeItem('jwt_token');
+      localStorage.removeItem('jwt_user');
+      showLoginModal();
+      return;
+    }
+    const user = await res.json();
+    currentUserRole = user.role || 'admin';
+    localStorage.setItem('jwt_user', JSON.stringify(user));
+  } catch (e) {}
+
   if (userJson) {
     try {
       const u = JSON.parse(userJson);
-      currentUserRole = u.role || 'viewer';
+      currentUserRole = u.role || 'admin';
       const nameElem = document.getElementById('user-display-name') || document.getElementById('top-user-name');
       if (nameElem) nameElem.innerText = u.full_name || 'ADK Administrator';
       const roleElem = document.getElementById('user-display-role') || document.getElementById('top-user-role');
@@ -1238,6 +1253,11 @@ async function openWorkerTimesheetModal(employeeId) {
     });
 
     if (!res.ok) {
+      if (res.status === 401) {
+        showToast('Session expired. Please sign in to view timesheet calendar.', 'error');
+        showLoginModal();
+        return;
+      }
       const err = await res.json();
       let errMsg = 'Failed to load timesheet';
       if (typeof err.detail === 'string') errMsg = err.detail;
