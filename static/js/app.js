@@ -1529,7 +1529,14 @@ async function loadSupplierPayments() {
               ${sp.company_name}
             </a>
           </td>
-          <td><code>${sp.invoice_number || 'N/A'}</code></td>
+          <td>
+            <code>${sp.invoice_number || 'N/A'}</code>
+            ${sp.attachment_filename ? `
+              <br/><button class="btn btn-outline" style="margin-top: 3px; padding: 1px 6px; font-size: 0.7rem; border-color: #2563EB; color: #2563EB;" onclick="openSupplierAttachment(${sp.id})" title="View attached document: ${sp.attachment_filename}">
+                📎 ${sp.attachment_filename.length > 15 ? sp.attachment_filename.slice(0, 12) + '...' : sp.attachment_filename}
+              </button>
+            ` : ''}
+          </td>
           <td style="font-size: 0.82rem;">${supplyPeriod}</td>
           <td>${sp.due_date}</td>
           <td>SAR ${tot.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
@@ -1632,6 +1639,15 @@ async function submitRecordSupplierPayment() {
       return;
     }
 
+    const resData = await res.json();
+    const createdSpId = resData.id;
+
+    // Upload optional attachment if selected
+    const fileInput = document.getElementById('record-supplier-attachment');
+    if (fileInput && fileInput.files && fileInput.files[0] && createdSpId) {
+      await uploadSupplierAttachmentFile(createdSpId, fileInput.files[0]);
+    }
+
     closeModal('modal-record-supplier');
     loadSupplierPayments();
     loadFinanceAnalytics();
@@ -1658,6 +1674,26 @@ function openEditSupplierModal(spId) {
   document.getElementById('edit-supplier-amount').value = sp.amount;
   document.getElementById('edit-supplier-status').value = sp.status;
   document.getElementById('edit-supplier-remarks').value = sp.remarks || '';
+
+  const attachContainer = document.getElementById('edit-supplier-attachment-container');
+  if (attachContainer) {
+    if (sp.attachment_filename) {
+      attachContainer.innerHTML = `
+        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.82rem; color: #1E40AF;">📎 <strong>${sp.attachment_filename}</strong></span>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn btn-outline" style="padding: 1px 6px; font-size: 0.72rem; border-color: #2563EB; color: #2563EB;" onclick="openSupplierAttachment(${sp.id})">⬇️ View</button>
+            <button type="button" class="btn btn-danger" style="padding: 1px 6px; font-size: 0.72rem;" onclick="deleteSupplierAttachment(${sp.id})">🗑️ Remove</button>
+          </div>
+        </div>
+      `;
+    } else {
+      attachContainer.innerHTML = `<span style="color: var(--text-muted); font-size: 0.8rem;">No document currently attached.</span>`;
+    }
+  }
+
+  const fileInput = document.getElementById('edit-supplier-attachment-file');
+  if (fileInput) fileInput.value = '';
 
   openModal('modal-edit-supplier');
 }
@@ -1690,6 +1726,12 @@ async function submitEditSupplierPayment() {
       return;
     }
 
+    // Check if new attachment was selected
+    const fileInput = document.getElementById('edit-supplier-attachment-file');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      await uploadSupplierAttachmentFile(spId, fileInput.files[0]);
+    }
+
     showToast('Supplier invoice updated successfully!');
     closeModal('modal-edit-supplier');
     loadSupplierPayments();
@@ -1698,6 +1740,51 @@ async function submitEditSupplierPayment() {
 
   } catch (err) {
     showToast(`Update error: ${err}`, 'error');
+  }
+}
+
+async function uploadSupplierAttachmentFile(spId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = localStorage.getItem('jwt_token') || '';
+  try {
+    const res = await fetch(`/api/suppliers/payments/${spId}/attachment`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Attachment upload failed', 'error');
+    }
+  } catch (e) {
+    console.error('Failed to upload invoice attachment:', e);
+  }
+}
+
+function openSupplierAttachment(spId) {
+  const token = localStorage.getItem('jwt_token') || '';
+  window.open(`/api/suppliers/payments/${spId}/attachment?token=${encodeURIComponent(token)}`, '_blank');
+}
+
+async function deleteSupplierAttachment(spId) {
+  if (!confirm('Remove the attached invoice document from this invoice?')) return;
+  try {
+    const res = await fetch(`/api/suppliers/payments/${spId}/attachment`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      showToast('Attachment removed successfully.');
+      loadSupplierPayments();
+      // Update modal view
+      const attachContainer = document.getElementById('edit-supplier-attachment-container');
+      if (attachContainer) {
+        attachContainer.innerHTML = `<span style="color: var(--text-muted); font-size: 0.8rem;">No document currently attached.</span>`;
+      }
+    }
+  } catch (e) {
+    showToast(`Error deleting attachment: ${e}`, 'error');
   }
 }
 
@@ -1871,7 +1958,12 @@ async function openVendorLedgerModal(companyName) {
     const invBody = document.getElementById('vendor-ledger-invoices-body');
     invBody.innerHTML = data.invoices.map(i => `
       <tr>
-        <td><code>${i.invoice_number || 'N/A'}</code></td>
+        <td>
+          <code>${i.invoice_number || 'N/A'}</code>
+          ${i.attachment_filename ? `
+            <br/><button class="btn btn-outline" style="margin-top: 3px; padding: 1px 6px; font-size: 0.7rem; border-color: #2563EB; color: #2563EB;" onclick="openSupplierAttachment(${i.id})" title="View attached document">📎 PDF</button>
+          ` : ''}
+        </td>
         <td>${i.invoice_date}</td>
         <td>${i.due_date}</td>
         <td>${i.invoice_details || 'N/A'}</td>

@@ -155,6 +155,8 @@ def init_db():
         status TEXT DEFAULT 'Pending',
         payment_date TEXT,
         remarks TEXT,
+        attachment_filename TEXT,
+        attachment_path TEXT,
         created_at TEXT NOT NULL
     );
     """)
@@ -272,6 +274,15 @@ def init_db():
     try:
         cursor.execute("UPDATE supplier_payments SET supply_start_date = supply_date WHERE supply_start_date IS NULL AND supply_date IS NOT NULL;")
         cursor.execute("UPDATE supplier_payments SET supply_end_date = supply_date WHERE supply_end_date IS NULL AND supply_date IS NOT NULL;")
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE supplier_payments ADD COLUMN attachment_filename TEXT;")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE supplier_payments ADD COLUMN attachment_path TEXT;")
     except Exception:
         pass
 

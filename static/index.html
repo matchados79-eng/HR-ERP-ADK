@@ -1539,6 +1539,12 @@
             <label>Remarks / Notes</label>
             <textarea name="remarks" class="form-control" rows="2" placeholder="Payment terms: Net 30 days..."></textarea>
           </div>
+
+          <div class="form-group">
+            <label>Attach Original Invoice PDF / Scanned Copy <span style="color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
+            <input type="file" id="record-supplier-attachment" name="attachment_file" class="form-control" accept=".pdf,image/*">
+            <small style="color: var(--text-muted);">Supported formats: PDF, PNG, JPG scans</small>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-record-supplier')">Cancel</button>
@@ -1615,6 +1621,12 @@
           <div class="form-group">
             <label>Remarks / Notes</label>
             <textarea id="edit-supplier-remarks" class="form-control" rows="2"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Invoice PDF / Scan Attachment <span style="color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
+            <div id="edit-supplier-attachment-container" style="margin-bottom: 6px; font-size: 0.85rem;"></div>
+            <input type="file" id="edit-supplier-attachment-file" class="form-control" accept=".pdf,image/*">
           </div>
         </div>
         <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">

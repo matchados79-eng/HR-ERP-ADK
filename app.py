@@ -54,14 +54,17 @@ if db.is_vercel():
     UPLOADS_PHOTOS_DIR = os.path.join(tempfile.gettempdir(), "photos")
     UPLOADS_DOCS_DIR = os.path.join(tempfile.gettempdir(), "documents")
     UPLOADS_BACKUPS_DIR = os.path.join(tempfile.gettempdir(), "backups")
+    UPLOADS_INVOICES_DIR = os.path.join(tempfile.gettempdir(), "supplier_invoices")
 else:
     UPLOADS_PHOTOS_DIR = os.path.join(BASE_DIR, "uploads", "photos")
     UPLOADS_DOCS_DIR = os.path.join(BASE_DIR, "uploads", "documents")
     UPLOADS_BACKUPS_DIR = os.path.join(BASE_DIR, "uploads", "backups")
+    UPLOADS_INVOICES_DIR = os.path.join(BASE_DIR, "uploads", "supplier_invoices")
 
 os.makedirs(UPLOADS_PHOTOS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DOCS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_BACKUPS_DIR, exist_ok=True)
+os.makedirs(UPLOADS_INVOICES_DIR, exist_ok=True)
 
 # Mount static and uploads
 static_dir = os.path.join(BASE_DIR, "static")
@@ -1036,8 +1039,92 @@ def download_supplier_statement_pdf(sp_id: int, user: dict = Depends(get_current
     
     return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={filename}"})
 
+@app.post("/api/suppliers/payments/{sp_id}/attachment")
+async def upload_supplier_invoice_attachment(
+    sp_id: int,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier invoice not found.")
+        
+    orig_filename = os.path.basename(file.filename) if file.filename else "invoice.pdf"
+    safe_name = f"INV_{sp_id}_{uuid.uuid4().hex[:8]}_{orig_filename}"
+    file_path = os.path.join(UPLOADS_INVOICES_DIR, safe_name)
+    
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+        
+    db.execute_cmd(
+        "UPDATE supplier_payments SET attachment_filename = ?, attachment_path = ? WHERE id = ?",
+        (orig_filename, safe_name, sp_id)
+    )
+    
+    return {
+        "message": "Invoice attachment uploaded successfully",
+        "attachment_filename": orig_filename,
+        "download_url": f"/api/suppliers/payments/{sp_id}/attachment"
+    }
+
+@app.get("/api/suppliers/payments/{sp_id}/attachment")
+def download_supplier_invoice_attachment(
+    sp_id: int,
+    user: dict = Depends(get_current_user)
+):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp or not sp.get("attachment_path"):
+        raise HTTPException(status_code=404, detail="No attachment found for this invoice.")
+        
+    safe_name = sp["attachment_path"]
+    full_path = os.path.join(UPLOADS_INVOICES_DIR, safe_name)
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="Attachment file not found on server disk.")
+        
+    orig_name = sp.get("attachment_filename") or f"Invoice_{sp_id}.pdf"
+    media_type = "application/pdf" if orig_name.lower().endswith(".pdf") else "application/octet-stream"
+    
+    return FileResponse(
+        full_path,
+        media_type=media_type,
+        filename=orig_name,
+        headers={"Content-Disposition": f"inline; filename={orig_name}"}
+    )
+
+@app.delete("/api/suppliers/payments/{sp_id}/attachment")
+def delete_supplier_invoice_attachment(
+    sp_id: int,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if not sp:
+        raise HTTPException(status_code=404, detail="Supplier invoice not found.")
+        
+    if sp.get("attachment_path"):
+        full_path = os.path.join(UPLOADS_INVOICES_DIR, sp["attachment_path"])
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+            except Exception:
+                pass
+                
+    db.execute_cmd(
+        "UPDATE supplier_payments SET attachment_filename = NULL, attachment_path = NULL WHERE id = ?",
+        (sp_id,)
+    )
+    return {"message": "Invoice attachment removed successfully"}
+
 @app.delete("/api/suppliers/payments/{sp_id}")
 def delete_supplier_payment(sp_id: int, user: dict = Depends(require_roles(["admin"]))):
+    sp = db.query_one("SELECT * FROM supplier_payments WHERE id = ?", (sp_id,))
+    if sp and sp.get("attachment_path"):
+        full_path = os.path.join(UPLOADS_INVOICES_DIR, sp["attachment_path"])
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+            except Exception:
+                pass
     db.execute_cmd("DELETE FROM supplier_payments WHERE id = ?", (sp_id,))
     return {"message": "Supplier payment record deleted successfully"}
 

@@ -4,6 +4,7 @@ Tests all calculations, database operations, API routes, PDF outputs, SAMA WPS f
 """
 
 import os
+import io
 import json
 from fastapi.testclient import TestClient
 
@@ -312,6 +313,25 @@ def test_supplier_payments_and_disbursals():
     assert rec_data["due_date"] == "2026-09-25"
     assert rec_data["supply_start_date"] == "2026-08-01"
     assert rec_data["supply_end_date"] == "2026-08-31"
+
+    # 5. Test Optional Invoice Attachment Upload, Download & Deletion
+    fake_pdf = io.BytesIO(b"%PDF-1.4 Fake test invoice content...")
+    upload_res = client.post(
+        f"/api/suppliers/payments/{sp_id}/attachment",
+        files={"file": ("tax_invoice_101.pdf", fake_pdf, "application/pdf")},
+        headers=headers
+    )
+    assert upload_res.status_code == 200
+    assert upload_res.json()["attachment_filename"] == "tax_invoice_101.pdf"
+
+    # Download attachment
+    dl_res = client.get(f"/api/suppliers/payments/{sp_id}/attachment", headers=headers)
+    assert dl_res.status_code == 200
+    assert b"Fake test invoice content" in dl_res.content
+
+    # Delete attachment
+    del_att_res = client.delete(f"/api/suppliers/payments/{sp_id}/attachment", headers=headers)
+    assert del_att_res.status_code == 200
 
     client.delete(f"/api/suppliers/payments/{rec_id}", headers=headers)
     client.delete(f"/api/suppliers/payments/{sp_id}", headers=headers)
