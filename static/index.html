@@ -1990,21 +1990,25 @@
 
           <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-bottom: 8px;">1. Rates & Regular Working Hours</div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 1.2fr; gap: 8px;">
               <div class="form-group">
-                <label style="font-size: 0.75rem;">Daily Rate (SAR)</label>
-                <input type="number" step="0.00000001" id="adjust-daily-rate" class="form-control" oninput="recalcAdjustWorkerPayLive()">
+                <label style="font-size: 0.75rem; font-weight: 700; color: #0047AB;">Monthly Rate (SAR) *</label>
+                <input type="number" step="0.01" id="adjust-monthly-rate" class="form-control" style="font-weight: 700; background: #FEF3C7; border-color: #F59E0B;" oninput="onAdjustMonthlyRateInput()">
               </div>
               <div class="form-group">
-                <label style="font-size: 0.75rem;">Hourly Rate (SAR)</label>
+                <label style="font-size: 0.75rem;">Daily Rate (÷30)</label>
+                <input type="number" step="0.00000001" id="adjust-daily-rate" class="form-control" oninput="onAdjustDailyRateInput()">
+              </div>
+              <div class="form-group">
+                <label style="font-size: 0.75rem;">Hourly (÷8)</label>
                 <input type="number" step="0.01" id="adjust-hourly-rate" class="form-control" oninput="recalcAdjustWorkerPayLive()">
               </div>
               <div class="form-group">
-                <label style="font-size: 0.75rem;">Total Working Hours</label>
+                <label style="font-size: 0.75rem;">Working Hours</label>
                 <input type="number" step="0.01" id="adjust-working-hours" class="form-control" oninput="recalcAdjustWorkerPayLive()">
               </div>
               <div class="form-group">
-                <label style="font-size: 0.75rem;">Regular Pay (SAR)</label>
+                <label style="font-size: 0.75rem; font-weight: 700;">Regular Pay (SAR)</label>
                 <input type="number" step="0.01" id="adjust-regular-pay" class="form-control" readonly style="background: #F1F5F9; font-weight: 700;">
               </div>
             </div>
@@ -2213,17 +2217,21 @@
                   </select>
                 </div>
               </div>
-              <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 10px;">
+              <div style="display: grid; grid-template-columns: 1.4fr 1.2fr 1fr 1fr 1fr; gap: 8px;">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label style="font-size: 0.72rem;">Cutoff Period</label>
                   <input type="text" id="ts-cutoff-period" class="form-control" style="font-size: 0.8rem; height: 32px;" placeholder="July 01-31, 2026">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label style="font-size: 0.72rem;">Daily Rate (SAR)</label>
+                  <label style="font-size: 0.72rem; font-weight: 700; color: #0047AB;">Monthly Rate (SAR) *</label>
+                  <input type="number" step="0.01" id="ts-monthly-rate" class="form-control" style="font-size: 0.82rem; height: 32px; font-weight: 800; background: #FEF3C7; border-color: #F59E0B;" oninput="onMonthlyRateInput()" placeholder="2500.00">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label style="font-size: 0.72rem;">Daily Rate (÷30)</label>
                   <input type="number" step="0.00000001" id="ts-daily-rate" class="form-control" style="font-size: 0.8rem; height: 32px;" oninput="onDailyRateInput()">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label style="font-size: 0.72rem;">Hourly Rate (SAR)</label>
+                  <label style="font-size: 0.72rem;">Hourly Rate (÷8)</label>
                   <input type="number" step="0.01" id="ts-hourly-rate" class="form-control" style="font-size: 0.8rem; height: 32px;" oninput="recalcTimesheetSummaryLive()">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
@@ -2232,7 +2240,7 @@
                 </div>
               </div>
               <div id="ts-worker-type-hint" style="font-size: 0.68rem; color: #2563EB; font-weight: 600; margin-top: 6px;">
-                🔨 Direct Worker: Daily Rate = Monthly/30 • Hourly Rate = Daily/8 • Overtime Eligible
+                🔨 Direct Worker: Rate based on Monthly Rate ÷ 30 Daily • Daily ÷ 8 Hourly • Overtime Eligible
               </div>
             </div>
 

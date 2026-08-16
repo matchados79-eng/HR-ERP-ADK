@@ -1129,10 +1129,10 @@ def generate_payslip_pdf(employee_data: dict, payroll_detail: dict, company_info
           <div class="meta-val">{iqama_num}</div>
           <div class="meta-lbl">Cutoff Period:</div>
           <div class="meta-val">{cutoff_str}</div>
-          <div class="meta-lbl">Days Worked:</div>
-          <div class="meta-val">{days_worked:,.2f} days</div>
-          <div class="meta-lbl">Hourly / Daily Rate:</div>
-          <div class="meta-val">SAR {hourly_rate:,.2f} / {daily_rate:,.2f}</div>
+          <div class="meta-lbl">Monthly Base Rate:</div>
+          <div class="meta-val"><strong>SAR {basic:,.2f} / mo</strong></div>
+          <div class="meta-lbl">Daily & Hourly Rates:</div>
+          <div class="meta-val">SAR {daily_rate:,.2f} / d (÷30) • SAR {hourly_rate:,.2f} / h</div>
         </div>
       </div>
 

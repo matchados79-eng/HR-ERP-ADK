@@ -1092,6 +1092,9 @@ function openAdjustWorkerPayModal(detailId) {
   const otRate = worker.ot_rate || Math.round(hourlyRate * 1.5 * 100) / 100;
   const workingHours = worker.working_hours !== undefined && worker.working_hours !== null ? worker.working_hours : (daysWorked * 8.0);
 
+  const mRateEl = document.getElementById('adjust-monthly-rate');
+  if (mRateEl) mRateEl.value = parseFloat(basic).toFixed(2);
+
   document.getElementById('adjust-cutoff-period').value = cutoff;
   document.getElementById('adjust-days-worked').value = daysWorked;
   document.getElementById('adjust-daily-rate').value = dailyRate.toFixed(8);
@@ -1117,6 +1120,30 @@ function openAdjustWorkerPayModal(detailId) {
 
   recalcAdjustWorkerPayLive();
   openModal('modal-adjust-worker-pay');
+}
+
+function onAdjustMonthlyRateInput() {
+  const mRate = parseFloat(document.getElementById('adjust-monthly-rate').value || 0);
+  if (mRate >= 0) {
+    const dailyRate = mRate / 30.0;
+    const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    document.getElementById('adjust-daily-rate').value = dailyRate.toFixed(8);
+    document.getElementById('adjust-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('adjust-ot-rate').value = otRate.toFixed(2);
+  }
+  recalcAdjustWorkerPayLive();
+}
+
+function onAdjustDailyRateInput() {
+  const dailyRate = parseFloat(document.getElementById('adjust-daily-rate').value || 0);
+  if (dailyRate >= 0) {
+    const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    document.getElementById('adjust-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('adjust-ot-rate').value = otRate.toFixed(2);
+  }
+  recalcAdjustWorkerPayLive();
 }
 
 function recalcAdjustWorkerPayLive() {
@@ -1306,6 +1333,10 @@ async function openWorkerTimesheetModal(employeeId) {
     if (wtEl) wtEl.value = wt;
     updateWorkerTypeHint(wt);
 
+    const mRate = parseFloat(currentTimesheetEmp.basic_salary || 0);
+    const mRateEl = document.getElementById('ts-monthly-rate');
+    if (mRateEl) mRateEl.value = mRate.toFixed(2);
+
     const drEl = document.getElementById('ts-daily-rate');
     if (drEl) drEl.value = parseFloat(currentTimesheetEmp.daily_rate || 0).toFixed(8);
     const hrEl = document.getElementById('ts-hourly-rate');
@@ -1339,7 +1370,7 @@ function updateWorkerTypeHint(type) {
   const hintEl = document.getElementById('ts-worker-type-hint');
   if (!hintEl) return;
   if (type === 'Direct') {
-    hintEl.innerHTML = '🔨 <strong>Direct Worker:</strong> Daily Rate = Monthly/30 • Hourly Rate = Daily/8 • Overtime Eligible';
+    hintEl.innerHTML = '🔨 <strong>Direct Worker:</strong> Rate based on Monthly Rate ÷ 30 Daily • Daily ÷ 8 Hourly • Overtime Eligible';
     hintEl.style.color = '#2563EB';
   } else {
     hintEl.innerHTML = '🏢 <strong>Indirect Worker:</strong> Regular Only & Hourly Rate • Overtime Not Applicable';
@@ -1347,13 +1378,33 @@ function updateWorkerTypeHint(type) {
   }
 }
 
+function onMonthlyRateInput() {
+  const mRate = parseFloat(document.getElementById('ts-monthly-rate').value || 0);
+  const wt = document.getElementById('ts-worker-type').value;
+
+  if (wt === 'Direct') {
+    const dailyRate = mRate > 0 ? (mRate / 30.0) : 0.0;
+    const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    document.getElementById('ts-daily-rate').value = dailyRate.toFixed(8);
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('ts-ot-rate').value = otRate.toFixed(2);
+  } else {
+    const hourlyRate = mRate > 0 ? Math.round((mRate / 240.0) * 100) / 100 : 25.00;
+    document.getElementById('ts-daily-rate').value = '0.00000000';
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+    document.getElementById('ts-ot-rate').value = '0.00';
+  }
+  recalcTimesheetSummaryLive();
+}
+
 function onTimesheetWorkerTypeChanged() {
   const wt = document.getElementById('ts-worker-type').value;
   updateWorkerTypeHint(wt);
   
-  const baseSal = currentTimesheetEmp ? parseFloat(currentTimesheetEmp.basic_salary || 0) : 0;
+  const mRate = parseFloat(document.getElementById('ts-monthly-rate')?.value || (currentTimesheetEmp ? currentTimesheetEmp.basic_salary : 0) || 0);
   if (wt === 'Direct') {
-    const dailyRate = baseSal > 0 ? (baseSal / 30.0) : 83.33333333;
+    const dailyRate = mRate > 0 ? (mRate / 30.0) : 83.33333333;
     const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
     const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
     document.getElementById('ts-daily-rate').value = dailyRate.toFixed(8);
@@ -1361,7 +1412,7 @@ function onTimesheetWorkerTypeChanged() {
     document.getElementById('ts-ot-rate').value = otRate.toFixed(2);
   } else {
     // Indirect: Regular only and hourly
-    const hourlyRate = baseSal > 0 ? Math.round((baseSal / 240.0) * 100) / 100 : 25.00;
+    const hourlyRate = mRate > 0 ? Math.round((mRate / 240.0) * 100) / 100 : 25.00;
     document.getElementById('ts-daily-rate').value = '0.00000000';
     document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
     document.getElementById('ts-ot-rate').value = '0.00';
@@ -1372,8 +1423,11 @@ function onTimesheetWorkerTypeChanged() {
 function onDailyRateInput() {
   const dailyRate = parseFloat(document.getElementById('ts-daily-rate').value || 0);
   if (dailyRate > 0) {
+    const monthlyRate = dailyRate * 30.0;
     const hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
     const otRate = Math.round(hourlyRate * 1.5 * 100) / 100;
+    const mRateEl = document.getElementById('ts-monthly-rate');
+    if (mRateEl) mRateEl.value = monthlyRate.toFixed(2);
     document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
     if (document.getElementById('ts-worker-type').value === 'Direct') {
       document.getElementById('ts-ot-rate').value = otRate.toFixed(2);
