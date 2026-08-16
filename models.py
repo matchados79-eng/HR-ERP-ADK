@@ -89,6 +89,8 @@ class SupplierPaymentCreate(BaseModel):
     due_date: Optional[str] = None
     invoice_details: Optional[str] = None
     supply_date: Optional[str] = None
+    supply_start_date: Optional[str] = None
+    supply_end_date: Optional[str] = None
     amount: float = 0.0
     remarks: Optional[str] = None
     status: Optional[str] = "Pending"

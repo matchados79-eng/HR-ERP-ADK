@@ -619,7 +619,21 @@ def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(req
         raise HTTPException(status_code=400, detail="Invoice amount cannot be negative.")
         
     inv_date = req.invoice_date.strip() if req.invoice_date and req.invoice_date.strip() else date.today().strftime("%Y-%m-%d")
-    sup_date = req.supply_date.strip() if req.supply_date and req.supply_date.strip() else inv_date
+    
+    # Handle Supply Date From & To
+    if req.supply_start_date and req.supply_start_date.strip():
+        sup_start = req.supply_start_date.strip()
+    elif req.supply_date and req.supply_date.strip():
+        sup_start = req.supply_date.strip()
+    else:
+        sup_start = inv_date
+        
+    if req.supply_end_date and req.supply_end_date.strip():
+        sup_end = req.supply_end_date.strip()
+    else:
+        sup_end = sup_start
+        
+    sup_date = sup_start
     
     if req.due_date and req.due_date.strip():
         due_date = req.due_date.strip()
@@ -638,11 +652,11 @@ def create_supplier_payment(req: SupplierPaymentCreate, user: dict = Depends(req
     sp_id = db.execute_cmd("""
         INSERT INTO supplier_payments (
             company_name, invoice_number, invoice_date, due_date, invoice_details,
-            supply_date, amount, paid_amount, remaining_amount, status, remarks, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            supply_date, supply_start_date, supply_end_date, amount, paid_amount, remaining_amount, status, remarks, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.company_name.strip(), req.invoice_number or None, inv_date, due_date, inv_details,
-        sup_date, inv_amount, paid_amt, rem_amt, inv_status, req.remarks or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sup_date, sup_start, sup_end, inv_amount, paid_amt, rem_amt, inv_status, req.remarks or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
     
     if paid_amt > 0:
@@ -662,7 +676,11 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
         
     inv_amount = float(req.amount or 0.0)
     inv_date = req.invoice_date.strip() if req.invoice_date and req.invoice_date.strip() else sp["invoice_date"]
-    sup_date = req.supply_date.strip() if req.supply_date and req.supply_date.strip() else sp["supply_date"]
+    
+    sup_start = req.supply_start_date.strip() if req.supply_start_date and req.supply_start_date.strip() else (sp.get("supply_start_date") or sp["supply_date"])
+    sup_end = req.supply_end_date.strip() if req.supply_end_date and req.supply_end_date.strip() else (sp.get("supply_end_date") or sup_start)
+    sup_date = sup_start
+    
     due_date = req.due_date.strip() if req.due_date and req.due_date.strip() else sp["due_date"]
     inv_details = req.invoice_details.strip() if req.invoice_details and req.invoice_details.strip() else sp["invoice_details"]
     
@@ -685,6 +703,8 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
             due_date = ?,
             invoice_details = ?,
             supply_date = ?,
+            supply_start_date = ?,
+            supply_end_date = ?,
             amount = ?,
             remaining_amount = ?,
             status = ?,
@@ -692,7 +712,7 @@ def update_supplier_payment(sp_id: int, req: SupplierPaymentCreate, user: dict =
         WHERE id = ?
     """, (
         req.company_name.strip(), req.invoice_number or None, inv_date,
-        due_date, inv_details, sup_date, inv_amount, new_remaining,
+        due_date, inv_details, sup_date, sup_start, sup_end, inv_amount, new_remaining,
         new_status, req.remarks or None, sp_id
     ))
     

@@ -121,7 +121,9 @@ def init_db():
         invoice_date TEXT NOT NULL,
         due_date TEXT NOT NULL,
         invoice_details TEXT,
-        supply_date TEXT NOT NULL,
+        supply_date TEXT,
+        supply_start_date TEXT,
+        supply_end_date TEXT,
         amount REAL NOT NULL DEFAULT 0.0,
         paid_amount REAL NOT NULL DEFAULT 0.0,
         remaining_amount REAL NOT NULL DEFAULT 0.0,
@@ -231,6 +233,21 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_company ON supplier_payments(company_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_status ON supplier_payments(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_logs_sp ON supplier_payment_logs(supplier_payment_id);")
+    
+    # Auto-migration for supply_start_date and supply_end_date
+    try:
+        cursor.execute("ALTER TABLE supplier_payments ADD COLUMN supply_start_date TEXT;")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE supplier_payments ADD COLUMN supply_end_date TEXT;")
+    except Exception:
+        pass
+    try:
+        cursor.execute("UPDATE supplier_payments SET supply_start_date = supply_date WHERE supply_start_date IS NULL AND supply_date IS NOT NULL;")
+        cursor.execute("UPDATE supplier_payments SET supply_end_date = supply_date WHERE supply_end_date IS NULL AND supply_date IS NOT NULL;")
+    except Exception:
+        pass
     
     # Default Settings
     default_settings = {

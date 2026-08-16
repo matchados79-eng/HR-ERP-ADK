@@ -317,6 +317,10 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
     paid_amt = float(sp.get("paid_amount", 0.0))
     rem_amt = float(sp.get("remaining_amount", max(0.0, total_amt - paid_amt)))
     
+    start_d = sp.get("supply_start_date") or sp.get("supply_date", "")
+    end_d = sp.get("supply_end_date") or sp.get("supply_date", "")
+    supply_period = f"{start_d} to {end_d}" if start_d and end_d and start_d != end_d else (start_d or "N/A")
+    
     inv_info_data = [
         [
             Paragraph("<b>Vendor Company:</b>", cell_bold), Paragraph(str(sp.get("company_name", "")), cell_style),
@@ -327,7 +331,7 @@ def generate_supplier_statement_pdf(sp: dict, payment_logs: list, company_info: 
             Paragraph("<b>Due Date:</b>", cell_bold), Paragraph(str(sp.get("due_date", "")), cell_style)
         ],
         [
-            Paragraph("<b>Supply Date:</b>", cell_bold), Paragraph(str(sp.get("supply_date", "")), cell_style),
+            Paragraph("<b>Supply Period:</b>", cell_bold), Paragraph(supply_period, cell_style),
             Paragraph("<b>Payment Status:</b>", cell_bold), Paragraph(str(sp.get("status", "Pending")), cell_style)
         ],
         [

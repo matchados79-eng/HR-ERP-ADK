@@ -527,6 +527,7 @@
                 <th>ID</th>
                 <th>Vendor Company</th>
                 <th>Invoice #</th>
+                <th>Supply Period</th>
                 <th>Due Date</th>
                 <th>Total Billed</th>
                 <th>Paid</th>
@@ -536,7 +537,7 @@
               </tr>
             </thead>
             <tbody id="supplier-payments-body">
-              <tr><td colspan="9" style="text-align: center;">Loading supplier invoices...</td></tr>
+              <tr><td colspan="10" style="text-align: center;">Loading supplier invoices...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1288,18 +1289,25 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
               <label>Invoice Date *</label>
               <input type="date" name="invoice_date" class="form-control" required>
             </div>
             <div class="form-group">
-              <label>Due Date *</label>
+              <label>Payment Due Date *</label>
               <input type="date" name="due_date" class="form-control" required>
             </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
-              <label>Supply Date *</label>
-              <input type="date" name="supply_date" class="form-control" required>
+              <label>Supply Date (From) *</label>
+              <input type="date" name="supply_start_date" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Supply Date (To) *</label>
+              <input type="date" name="supply_end_date" class="form-control" required>
             </div>
           </div>
 
@@ -1357,18 +1365,25 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
               <label>Invoice Date *</label>
               <input type="date" id="edit-supplier-invoice-date" class="form-control" required>
             </div>
             <div class="form-group">
-              <label>Due Date *</label>
+              <label>Payment Due Date *</label>
               <input type="date" id="edit-supplier-due-date" class="form-control" required>
             </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
-              <label>Supply Date *</label>
-              <input type="date" id="edit-supplier-supply-date" class="form-control" required>
+              <label>Supply Date (From) *</label>
+              <input type="date" id="edit-supplier-supply-start" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Supply Date (To) *</label>
+              <input type="date" id="edit-supplier-supply-end" class="form-control" required>
             </div>
           </div>
 

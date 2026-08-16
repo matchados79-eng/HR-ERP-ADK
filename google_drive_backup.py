@@ -131,12 +131,13 @@ def restore_from_backup_dict(dump: Dict[str, Any]) -> Dict[str, Any]:
             cursor.execute("""
                 INSERT INTO supplier_payments (
                     id, company_name, invoice_number, invoice_date, due_date,
-                    invoice_details, supply_date, amount, paid_amount, remaining_amount,
+                    invoice_details, supply_date, supply_start_date, supply_end_date, amount, paid_amount, remaining_amount,
                     status, payment_date, remarks, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 sp.get("id"), sp["company_name"], sp.get("invoice_number"), sp["invoice_date"], sp["due_date"],
-                sp.get("invoice_details"), sp["supply_date"], sp["amount"], sp.get("paid_amount", 0.0),
+                sp.get("invoice_details"), sp.get("supply_date"), sp.get("supply_start_date") or sp.get("supply_date"),
+                sp.get("supply_end_date") or sp.get("supply_date"), sp["amount"], sp.get("paid_amount", 0.0),
                 sp.get("remaining_amount", sp["amount"]), sp.get("status", "Pending"),
                 sp.get("payment_date"), sp.get("remarks"), sp.get("created_at")
             ))

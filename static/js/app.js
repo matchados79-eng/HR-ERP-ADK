@@ -1165,6 +1165,10 @@ async function loadSupplierPayments() {
       const pd = sp.paid_amount || 0.0;
       const rem = sp.remaining_amount !== undefined ? sp.remaining_amount : Math.max(0, tot - pd);
 
+      const startD = sp.supply_start_date || sp.supply_date || '';
+      const endD = sp.supply_end_date || sp.supply_date || '';
+      const supplyPeriod = (startD && endD && startD !== endD) ? `${startD} <span style="color:var(--text-muted);">to</span> ${endD}` : (startD || 'N/A');
+
       return `
         <tr>
           <td>#INV-${sp.id}</td>
@@ -1174,6 +1178,7 @@ async function loadSupplierPayments() {
             </a>
           </td>
           <td><code>${sp.invoice_number || 'N/A'}</code></td>
+          <td style="font-size: 0.82rem;">${supplyPeriod}</td>
           <td>${sp.due_date}</td>
           <td>SAR ${tot.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
           <td><span style="color: var(--primary); font-weight: 600;">SAR ${pd.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></td>
@@ -1220,12 +1225,14 @@ function openRecordSupplierPaymentModal() {
   const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   
   const invDate = document.querySelector('#record-supplier-form input[name="invoice_date"]');
-  const supDate = document.querySelector('#record-supplier-form input[name="supply_date"]');
+  const supStartDate = document.querySelector('#record-supplier-form input[name="supply_start_date"]');
+  const supEndDate = document.querySelector('#record-supplier-form input[name="supply_end_date"]');
   const dueDate = document.querySelector('#record-supplier-form input[name="due_date"]');
   const invNum = document.querySelector('#record-supplier-form input[name="invoice_number"]');
   
   if (invDate) invDate.value = today;
-  if (supDate) supDate.value = today;
+  if (supStartDate) supStartDate.value = today;
+  if (supEndDate) supEndDate.value = today;
   if (dueDate) dueDate.value = d30;
   if (invNum && !invNum.value) invNum.value = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -1288,7 +1295,8 @@ function openEditSupplierModal(spId) {
   document.getElementById('edit-supplier-invoice-num').value = sp.invoice_number || '';
   document.getElementById('edit-supplier-invoice-date').value = sp.invoice_date;
   document.getElementById('edit-supplier-due-date').value = sp.due_date;
-  document.getElementById('edit-supplier-supply-date').value = sp.supply_date;
+  document.getElementById('edit-supplier-supply-start').value = sp.supply_start_date || sp.supply_date || '';
+  document.getElementById('edit-supplier-supply-end').value = sp.supply_end_date || sp.supply_date || '';
   document.getElementById('edit-supplier-details').value = sp.invoice_details || '';
   document.getElementById('edit-supplier-amount').value = sp.amount;
   document.getElementById('edit-supplier-status').value = sp.status;
@@ -1304,7 +1312,8 @@ async function submitEditSupplierPayment() {
     invoice_number: document.getElementById('edit-supplier-invoice-num').value,
     invoice_date: document.getElementById('edit-supplier-invoice-date').value,
     due_date: document.getElementById('edit-supplier-due-date').value,
-    supply_date: document.getElementById('edit-supplier-supply-date').value,
+    supply_start_date: document.getElementById('edit-supplier-supply-start').value,
+    supply_end_date: document.getElementById('edit-supplier-supply-end').value,
     invoice_details: document.getElementById('edit-supplier-details').value,
     amount: parseFloat(document.getElementById('edit-supplier-amount').value || 0),
     status: document.getElementById('edit-supplier-status').value,
