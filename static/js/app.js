@@ -1254,7 +1254,29 @@ function renderTimesheetCalendarGrid() {
   const container = document.getElementById('timesheet-calendar-grid');
   if (!container) return;
 
-  container.innerHTML = currentTimesheetDays.map((d, idx) => {
+  // Header row for Sunday - Saturday
+  const weekdaysHdr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri (Rest)', 'Sat'];
+  const hdrHtml = `
+    <div style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 2px; text-align: center;">
+      ${weekdaysHdr.map((w, idx) => `
+        <div style="font-size: 0.72rem; font-weight: 800; padding: 4px; border-radius: 4px; background: ${idx === 5 ? '#DBEAFE' : '#F1F5F9'}; color: ${idx === 5 ? '#1E40AF' : '#475569'};">
+          ${w}
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Calculate leading blanks if Day 1 does not start on Sunday (weekday 0)
+  let leadingBlanks = '';
+  if (currentTimesheetDays.length > 0) {
+    const firstDayDate = new Date(currentTimesheetDays[0].date);
+    const firstDayOfWeek = firstDayDate.getDay(); // 0 is Sunday
+    for (let b = 0; b < firstDayOfWeek; b++) {
+      leadingBlanks += `<div class="ts-day-card" style="opacity: 0.25; background: #F8FAFC; border: 1px dashed #CBD5E1; min-height: 90px;"></div>`;
+    }
+  }
+
+  const daysHtml = currentTimesheetDays.map((d, idx) => {
     let cardClass = 'ts-day-card';
     if (d.day_type === 'RestDay') cardClass += ' rest-day';
     else if (d.day_type === 'Holiday') cardClass += ' holiday';
@@ -1275,7 +1297,7 @@ function renderTimesheetCalendarGrid() {
       if (!thuAbsent && !satAbsent) {
         fridayNote = '<span style="font-size: 0.58rem; color: #059669; font-weight: 800;" title="Paid Rest Day (Thu & Sat present)">● Paid (8h)</span>';
       } else {
-        fridayNote = '<span style="font-size: 0.58rem; color: #DC2626; font-weight: 800;" title="Unpaid: Absent on Thu or Sat">● Unpaid (Abs)</span>';
+        fridayNote = '<span style="font-size: 0.58rem; color: #DC2626; font-weight: 800;" title="Unpaid: Absent on Thu or Sat">● Unpaid</span>';
       }
     }
 
@@ -1283,7 +1305,17 @@ function renderTimesheetCalendarGrid() {
       <div class="${cardClass}" id="ts-card-day-${d.day}">
         <div class="ts-day-hdr">
           <div class="ts-day-num">${d.day} ${fridayNote}</div>
-          <div class="ts-day-name">${d.weekday}</div>
+          <!-- 1-Click Fast Day Presets -->
+          <div style="display: flex; gap: 2px;">
+            <button type="button" style="padding: 1px 4px; font-size: 0.6rem; font-weight: 800; background: #ECFDF5; border: 1px solid #A7F3D0; color: #059669; border-radius: 3px; cursor: pointer;"
+              onclick="quickSetDay8h(${d.day})" title="Click to instantly set 8 Hours">
+              8h
+            </button>
+            <button type="button" style="padding: 1px 4px; font-size: 0.6rem; font-weight: 800; background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; border-radius: 3px; cursor: pointer;"
+              onclick="quickSetDayAbsent(${d.day})" title="Click to mark Absent (0h)">
+              Abs
+            </button>
+          </div>
         </div>
 
         <div class="ts-day-inputs">
@@ -1316,6 +1348,31 @@ function renderTimesheetCalendarGrid() {
       </div>
     `;
   }).join('');
+
+  container.innerHTML = hdrHtml + leadingBlanks + daysHtml;
+}
+
+function quickSetDay8h(dayNum) {
+  const day = currentTimesheetDays.find(d => d.day === dayNum);
+  if (!day) return;
+  day.regular_hours = 8.0;
+  day.day_type = 'Regular';
+  day.meal_allowance = 1;
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast(`Day ${dayNum} set to 8.0 Hours.`, 'info');
+}
+
+function quickSetDayAbsent(dayNum) {
+  const day = currentTimesheetDays.find(d => d.day === dayNum);
+  if (!day) return;
+  day.regular_hours = 0.0;
+  day.ot_hours = 0.0;
+  day.day_type = 'Absent';
+  day.meal_allowance = 0;
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast(`Day ${dayNum} marked Absent.`, 'info');
 }
 
 function onTimesheetDayFieldChange(dayNum, field, val) {
@@ -1328,17 +1385,38 @@ function onTimesheetDayFieldChange(dayNum, field, val) {
     day[field] = parseInt(val) || 0;
   } else if (field === 'day_type') {
     day[field] = val;
-    const card = document.getElementById(`ts-card-day-${dayNum}`);
-    if (card) {
-      card.className = 'ts-day-card';
-      if (val === 'RestDay') card.classList.add('rest-day');
-      else if (val === 'Holiday') card.classList.add('holiday');
-      else if (val === 'Leave') card.classList.add('leave');
-      else if (val === 'Absent') card.classList.add('absent');
+    if (val === 'Absent') {
+      day.regular_hours = 0.0;
+      day.ot_hours = 0.0;
+      day.meal_allowance = 0;
     }
   }
 
+  renderTimesheetCalendarGrid();
   recalcTimesheetSummaryLive();
+}
+
+function fillTimesheetAll8HoursNoAbsent() {
+  let count = 0;
+  currentTimesheetDays.forEach(d => {
+    const isFriday = d.weekday === 'Fri';
+    if (d.day_type !== 'Absent') {
+      if (isFriday) {
+        d.day_type = 'RestDay';
+        d.regular_hours = 0.0; // Paid rest day if Thu and Sat are not absent
+        d.ot_hours = 0.0;
+        d.meal_allowance = 0;
+      } else {
+        d.day_type = 'Regular';
+        d.regular_hours = 8.0;
+        d.meal_allowance = 1;
+        count++;
+      }
+    }
+  });
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast(`⚡ Filled 8 hours for all workdays (${count} days). Fridays credited as Paid Rest Days.`);
 }
 
 function fillTimesheetStandard() {
