@@ -287,6 +287,85 @@ def test_monthly_worker_payroll_tracking():
     rem_res = client.delete(f"/api/payroll/monthly-roster/worker/{detail_id}", headers=headers)
     assert rem_res.status_code == 200
 
+def test_worker_timesheet_calendar_and_payslip_sync():
+    """Test monthly attendance calendar hours logging, rates, deductions, and automated payslip sync."""
+    token = auth.create_jwt_token({"user_id": 1, "email": "admin@adknprotech.com", "role": "admin", "full_name": "Admin"})
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    emp = db.query_one("SELECT * FROM employees LIMIT 1")
+    assert emp is not None
+    emp_id = emp["id"]
+    
+    # 1. Fetch timesheet calendar for July 2026
+    ts_res = client.get(f"/api/payroll/timesheet?employee_id={emp_id}&month=7&year=2026", headers=headers)
+    assert ts_res.status_code == 200
+    ts_data = ts_res.json()
+    assert len(ts_data["days"]) == 31
+    
+    # 2. Simulate 10 days worked (64.0 hrs @ 10.42/hr = 666.67, 16.0 rest hrs = 166.67, 10 meals @ 10 = 100.00, water bill = 12.89, cash advance = 400.00)
+    days_payload = []
+    for day in range(1, 32):
+        if day <= 8:
+            days_payload.append({
+                "day": day,
+                "date": f"2026-07-{day:02d}",
+                "regular_hours": 8.0,
+                "ot_hours": 0.0,
+                "day_type": "Regular",
+                "meal_allowance": 1,
+                "notes": "Site work"
+            })
+        elif day in [9, 10]:
+            days_payload.append({
+                "day": day,
+                "date": f"2026-07-{day:02d}",
+                "regular_hours": 8.0,
+                "ot_hours": 0.0,
+                "day_type": "RestDay",
+                "meal_allowance": 1,
+                "notes": "Rest day support"
+            })
+        else:
+            days_payload.append({
+                "day": day,
+                "date": f"2026-07-{day:02d}",
+                "regular_hours": 0.0,
+                "ot_hours": 0.0,
+                "day_type": "Regular",
+                "meal_allowance": 0,
+                "notes": ""
+            })
+            
+    bulk_res = client.post("/api/payroll/timesheet/bulk-save", json={
+        "employee_id": emp_id,
+        "month": 7,
+        "year": 2026,
+        "cutoff_period": "July 01-31, 2026",
+        "days": days_payload,
+        "daily_rate": 83.33333333,
+        "hourly_rate": 10.42,
+        "ot_rate": 15.63,
+        "water_bill": 12.89,
+        "wps_deduction": 0.0,
+        "other_deductions": 0.0,
+        "cash_advance": 400.0,
+        "adjustment_add": 0.0,
+        "adjustment_sub": 0.0,
+        "meal_rate": 10.0
+    }, headers=headers)
+    
+    assert bulk_res.status_code == 200
+    res_data = bulk_res.json()
+    assert res_data["total_pay"] == 933.33  # 666.67 + 166.67 + 100.00 = 933.34/933.33
+    assert res_data["actual_pay"] == 520.44  # 933.33 - 12.89 - 400.00 = 520.44
+    
+    # 3. Verify Payslip PDF generates successfully with new timesheet data
+    detail_id = res_data["detail_id"]
+    pdf_res = client.get(f"/api/payroll/details/{detail_id}/payslip.pdf?token={token}")
+    assert pdf_res.status_code == 200
+    assert len(pdf_res.content) > 1000
+
+
 
 def test_supplier_payments_and_disbursals():
     """Test Supplier Payments recording, partial disbursals, aging, and PDF statement generation."""

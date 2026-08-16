@@ -932,10 +932,13 @@ function renderPayrollRosterTable(workers, sum) {
         <td style="text-align: right; font-weight: 800; color: #059669; font-size: 0.95rem;">SAR ${w.net_salary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
         <td style="text-align: center;">
           <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
-            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; border-color: #0047AB; color: #0047AB;" onclick="openAdjustWorkerPayModal(${w.id})">
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; border-color: #059669; color: #059669; background: #ECFDF5;" title="Open Daily Hours & Timesheet Calendar" onclick="openWorkerTimesheetModal(${w.employee_id})">
+              📅 Timesheet
+            </button>
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; border-color: #0047AB; color: #0047AB;" title="Adjust Rate Breakdown" onclick="openAdjustWorkerPayModal(${w.id})">
               ✏️ Adjust
             </button>
-            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; background: #EFF6FF;" onclick="downloadWorkerPayslipPdf(${w.id})">
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem; background: #EFF6FF;" title="Print Official Payslip Voucher" onclick="downloadWorkerPayslipPdf(${w.id})">
               📄 Payslip
             </button>
             ${currentUserRole === 'admin' ? `
@@ -1185,6 +1188,301 @@ async function submitSaveWorkerMonthlyPay() {
 
   } catch (err) {
     showToast(`Error saving pay: ${err}`, 'error');
+  }
+}
+
+// =========================================================================
+// INTERACTIVE WORKER TIMESHEET ATTENDANCE CALENDAR
+// =========================================================================
+let currentTimesheetDays = [];
+let currentTimesheetEmp = null;
+
+async function openWorkerTimesheetModal(employeeId) {
+  const month = parseInt(document.getElementById('roster-select-month').value);
+  const year = parseInt(document.getElementById('roster-select-year').value);
+
+  showToast(`Loading timesheet calendar for ${MONTH_NAMES_MAP[month]} ${year}...`, 'info');
+
+  try {
+    const res = await fetch(`/api/payroll/timesheet?employee_id=${employeeId}&month=${month}&year=${year}`, {
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to load timesheet', 'error');
+      return;
+    }
+
+    const data = await res.json();
+    currentTimesheetEmp = data.employee;
+    currentTimesheetDays = data.days || [];
+    const detail = data.detail || {};
+
+    document.getElementById('ts-employee-id').value = currentTimesheetEmp.id;
+    document.getElementById('ts-month').value = month;
+    document.getElementById('ts-year').value = year;
+    document.getElementById('ts-is-saudi').value = currentTimesheetEmp.is_saudi;
+
+    document.getElementById('ts-worker-name-title').innerText = `${currentTimesheetEmp.first_name} ${currentTimesheetEmp.last_name} — Monthly Timesheet Calendar`;
+    document.getElementById('ts-worker-meta-subtitle').innerText = `Designation: ${currentTimesheetEmp.designation} • ${currentTimesheetEmp.department_name} • Code: ${currentTimesheetEmp.emp_code} • ${MONTH_NAMES_MAP[month]} ${year}`;
+    document.getElementById('ts-calendar-month-name').innerText = `${MONTH_NAMES_MAP[month]} ${year}`;
+
+    const cutoff = detail.cutoff_period || `${MONTH_NAMES_MAP[month]} 01-31, ${year}`;
+    document.getElementById('ts-cutoff-period').value = cutoff;
+    document.getElementById('ts-daily-rate').value = parseFloat(currentTimesheetEmp.daily_rate).toFixed(8);
+    document.getElementById('ts-hourly-rate').value = parseFloat(currentTimesheetEmp.hourly_rate).toFixed(2);
+    document.getElementById('ts-ot-rate').value = parseFloat(currentTimesheetEmp.ot_rate).toFixed(2);
+
+    document.getElementById('ts-wps-deduction').value = detail.wps_deduction !== undefined ? detail.wps_deduction : 0.00;
+    document.getElementById('ts-water-bill').value = detail.water_bill !== undefined ? detail.water_bill : 12.89;
+    document.getElementById('ts-other-deductions').value = detail.other_deductions !== undefined ? detail.other_deductions : 0.00;
+    document.getElementById('ts-cash-advance').value = detail.cash_advance !== undefined ? detail.cash_advance : 400.00;
+    document.getElementById('ts-adjustment-add').value = detail.adjustment_add !== undefined ? detail.adjustment_add : 0.00;
+    document.getElementById('ts-adjustment-sub').value = detail.adjustment_sub !== undefined ? detail.adjustment_sub : 0.00;
+
+    renderTimesheetCalendarGrid();
+    recalcTimesheetSummaryLive();
+    openModal('modal-worker-timesheet-calendar');
+
+  } catch (err) {
+    showToast(`Error opening timesheet: ${err}`, 'error');
+  }
+}
+
+function renderTimesheetCalendarGrid() {
+  const container = document.getElementById('timesheet-calendar-grid');
+  if (!container) return;
+
+  container.innerHTML = currentTimesheetDays.map((d, idx) => {
+    let cardClass = 'ts-day-card';
+    if (d.day_type === 'RestDay') cardClass += ' rest-day';
+    else if (d.day_type === 'Holiday') cardClass += ' holiday';
+    else if (d.day_type === 'Leave') cardClass += ' leave';
+    else if (d.day_type === 'Absent') cardClass += ' absent';
+
+    const isChecked = d.meal_allowance === 1 ? 'checked' : '';
+
+    return `
+      <div class="${cardClass}" id="ts-card-day-${d.day}">
+        <div class="ts-day-hdr">
+          <div class="ts-day-num">${d.day}</div>
+          <div class="ts-day-name">${d.weekday}</div>
+        </div>
+
+        <div class="ts-day-inputs">
+          <div class="ts-input-wrap">
+            <span class="ts-input-lbl">Reg (h)</span>
+            <input type="number" step="0.5" min="0" max="24" class="ts-input-control" value="${d.regular_hours}"
+              onchange="onTimesheetDayFieldChange(${d.day}, 'regular_hours', this.value)">
+          </div>
+          <div class="ts-input-wrap">
+            <span class="ts-input-lbl">O.T (h)</span>
+            <input type="number" step="0.5" min="0" max="24" class="ts-input-control" value="${d.ot_hours}"
+              onchange="onTimesheetDayFieldChange(${d.day}, 'ot_hours', this.value)">
+          </div>
+        </div>
+
+        <div class="ts-day-footer">
+          <select class="ts-type-select" onchange="onTimesheetDayFieldChange(${d.day}, 'day_type', this.value)">
+            <option value="Regular" ${d.day_type === 'Regular' ? 'selected' : ''}>🟢 Work</option>
+            <option value="RestDay" ${d.day_type === 'RestDay' ? 'selected' : ''}>🔵 Rest</option>
+            <option value="Holiday" ${d.day_type === 'Holiday' ? 'selected' : ''}>🟠 Holiday</option>
+            <option value="Leave" ${d.day_type === 'Leave' ? 'selected' : ''}>🟡 Leave</option>
+            <option value="Absent" ${d.day_type === 'Absent' ? 'selected' : ''}>🔴 Absent</option>
+          </select>
+
+          <label class="ts-meal-toggle" title="Meal Allowance (10 SAR)">
+            <input type="checkbox" ${isChecked} onchange="onTimesheetDayFieldChange(${d.day}, 'meal_allowance', this.checked ? 1 : 0)">
+            <span>🍱</span>
+          </label>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function onTimesheetDayFieldChange(dayNum, field, val) {
+  const day = currentTimesheetDays.find(d => d.day === dayNum);
+  if (!day) return;
+
+  if (field === 'regular_hours' || field === 'ot_hours') {
+    day[field] = parseFloat(val) || 0.0;
+  } else if (field === 'meal_allowance') {
+    day[field] = parseInt(val) || 0;
+  } else if (field === 'day_type') {
+    day[field] = val;
+    const card = document.getElementById(`ts-card-day-${dayNum}`);
+    if (card) {
+      card.className = 'ts-day-card';
+      if (val === 'RestDay') card.classList.add('rest-day');
+      else if (val === 'Holiday') card.classList.add('holiday');
+      else if (val === 'Leave') card.classList.add('leave');
+      else if (val === 'Absent') card.classList.add('absent');
+    }
+  }
+
+  recalcTimesheetSummaryLive();
+}
+
+function fillTimesheetStandard() {
+  currentTimesheetDays.forEach(d => {
+    const isFriday = d.weekday === 'Fri';
+    if (isFriday) {
+      d.day_type = 'RestDay';
+      d.regular_hours = 0.0;
+      d.ot_hours = 0.0;
+      d.meal_allowance = 0;
+    } else {
+      d.day_type = 'Regular';
+      d.regular_hours = 8.0;
+      d.ot_hours = 0.0;
+      d.meal_allowance = 1;
+    }
+  });
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast('Calendar filled with standard 8h workdays & Friday rest days.');
+}
+
+function fillTimesheetAddOT(addHours) {
+  currentTimesheetDays.forEach(d => {
+    if (d.day_type === 'Regular' && d.regular_hours > 0) {
+      d.ot_hours = parseFloat(addHours);
+    }
+  });
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast(`Added +${addHours}h overtime to all regular workdays.`);
+}
+
+function fillTimesheetAllMeals() {
+  currentTimesheetDays.forEach(d => {
+    if (d.regular_hours > 0 || d.day_type === 'Regular') {
+      d.meal_allowance = 1;
+    }
+  });
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast('Meal allowance enabled for all active workdays.');
+}
+
+function clearTimesheetMonth() {
+  currentTimesheetDays.forEach(d => {
+    d.regular_hours = 0.0;
+    d.ot_hours = 0.0;
+    d.day_type = 'Regular';
+    d.meal_allowance = 0;
+  });
+  renderTimesheetCalendarGrid();
+  recalcTimesheetSummaryLive();
+  showToast('Timesheet hours reset.');
+}
+
+function recalcTimesheetSummaryLive() {
+  let dailyRate = parseFloat(document.getElementById('ts-daily-rate').value || 0);
+  let hourlyRate = parseFloat(document.getElementById('ts-hourly-rate').value || 0);
+  if (hourlyRate <= 0 && dailyRate > 0) {
+    hourlyRate = Math.round((dailyRate / 8.0) * 100) / 100;
+    document.getElementById('ts-hourly-rate').value = hourlyRate.toFixed(2);
+  }
+
+  const otRate = parseFloat(document.getElementById('ts-ot-rate').value || (hourlyRate * 1.5));
+  const isSaudi = parseInt(document.getElementById('ts-is-saudi').value) === 1;
+
+  // Aggregates from calendar
+  const totRegHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 0), 0);
+  const totOtHours = currentTimesheetDays.reduce((acc, d) => acc + (parseFloat(d.ot_hours) || 0), 0);
+  const daysWorked = currentTimesheetDays.filter(d => (parseFloat(d.regular_hours) || 0) > 0 || d.day_type === 'Regular').length;
+  
+  let restDayHours = currentTimesheetDays.filter(d => d.day_type === 'RestDay').reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 8.0), 0);
+  let holidayHours = currentTimesheetDays.filter(d => d.day_type === 'Holiday').reduce((acc, d) => acc + (parseFloat(d.regular_hours) || 8.0), 0);
+  const mealQty = currentTimesheetDays.filter(d => parseInt(d.meal_allowance) === 1).length;
+
+  const regularPay = Math.round(totRegHours * hourlyRate * 100) / 100;
+  const otPay = Math.round(totOtHours * otRate * 100) / 100;
+  const subtotalPay = Math.round((regularPay + otPay) * 100) / 100;
+
+  const restDayPay = Math.round(restDayHours * hourlyRate * 100) / 100;
+  const holidayPay = Math.round(holidayHours * hourlyRate * 100) / 100;
+  const mealPay = Math.round(mealQty * 10.0 * 100) / 100;
+
+  const additionAdj = parseFloat(document.getElementById('ts-adjustment-add').value || 0);
+  const totalPay = Math.round((subtotalPay + restDayPay + holidayPay + mealPay + additionAdj) * 100) / 100;
+
+  // Deductions
+  const wpsDed = parseFloat(document.getElementById('ts-wps-deduction').value || 0);
+  const waterBill = parseFloat(document.getElementById('ts-water-bill').value || 0);
+  const otherDed = parseFloat(document.getElementById('ts-other-deductions').value || 0);
+
+  let gosi = 0.0;
+  if (isSaudi) {
+    const gosiBase = Math.min(totalPay, 45000);
+    gosi = Math.round(gosiBase * 0.0975 * 100) / 100;
+  }
+
+  const totalDeductions = Math.round((wpsDed + waterBill + otherDed + gosi) * 100) / 100;
+  const netPay = Math.max(0, Math.round((totalPay - totalDeductions) * 100) / 100);
+
+  const cashAdvance = parseFloat(document.getElementById('ts-cash-advance').value || 0);
+  const subAdj = parseFloat(document.getElementById('ts-adjustment-sub').value || 0);
+  const actualPay = Math.max(0, Math.round((netPay - cashAdvance - subAdj) * 100) / 100);
+
+  // Update Summary Strip
+  document.getElementById('ts-sum-reg-hours').innerText = `${totRegHours.toFixed(2)} hrs`;
+  document.getElementById('ts-sum-ot-hours').innerText = `${totOtHours.toFixed(2)} hrs`;
+  document.getElementById('ts-sum-days-worked').innerText = `${daysWorked.toFixed(2)} days`;
+
+  document.getElementById('ts-sum-total-pay').innerText = `SAR ${totalPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('ts-sum-total-ded').innerText = `SAR ${totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('ts-sum-net-pay').innerText = `SAR ${netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+  document.getElementById('ts-sum-actual-pay').innerText = `SAR ${actualPay.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+}
+
+async function submitSaveWorkerTimesheetAndPayroll() {
+  const employeeId = parseInt(document.getElementById('ts-employee-id').value);
+  const month = parseInt(document.getElementById('ts-month').value);
+  const year = parseInt(document.getElementById('ts-year').value);
+
+  const payload = {
+    employee_id: employeeId,
+    month: month,
+    year: year,
+    cutoff_period: document.getElementById('ts-cutoff-period').value || null,
+    days: currentTimesheetDays,
+    daily_rate: parseFloat(document.getElementById('ts-daily-rate').value || 0),
+    hourly_rate: parseFloat(document.getElementById('ts-hourly-rate').value || 0),
+    ot_rate: parseFloat(document.getElementById('ts-ot-rate').value || 0),
+    wps_deduction: parseFloat(document.getElementById('ts-wps-deduction').value || 0),
+    water_bill: parseFloat(document.getElementById('ts-water-bill').value || 0),
+    other_deductions: parseFloat(document.getElementById('ts-other-deductions').value || 0),
+    cash_advance: parseFloat(document.getElementById('ts-cash-advance').value || 0),
+    adjustment_add: parseFloat(document.getElementById('ts-adjustment-add').value || 0),
+    adjustment_sub: parseFloat(document.getElementById('ts-adjustment-sub').value || 0),
+    meal_rate: 10.0
+  };
+
+  try {
+    showToast('Saving timesheet calendar & syncing payslip...', 'info');
+    const res = await fetch('/api/payroll/timesheet/bulk-save', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to save timesheet', 'error');
+      return;
+    }
+
+    const data = await res.json();
+    closeModal('modal-worker-timesheet-calendar');
+    await loadMonthlyPayrollRoster();
+    showToast(`✅ Timesheet calendar saved! Actual Pay: SAR ${data.actual_pay.toLocaleString('en-US', {minimumFractionDigits: 2})}`);
+
+  } catch (err) {
+    showToast(`Error saving timesheet: ${err}`, 'error');
   }
 }
 

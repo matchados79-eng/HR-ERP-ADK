@@ -22,7 +22,8 @@ from models import (
     DepartmentCreate, DepartmentUpdate, EmployeeCreate, EmployeeUpdate,
     LeaveCreate, LeaveStatusUpdate, EOSBRequest, GOSIRequest, PayrollRunRequest,
     WorkerMonthlyPayRequest, SupplierCreate, SupplierUpdate, SupplierPaymentCreate,
-    SupplierPaymentStatusUpdate, SupplierDisburseRequest, BackupRestoreRequest
+    SupplierPaymentStatusUpdate, SupplierDisburseRequest, BackupRestoreRequest,
+    DailyTimesheetEntry, BulkTimesheetSaveRequest
 )
 from saudi_hr_engine import SaudiHREngine
 from pdf_generator import (
@@ -1677,6 +1678,300 @@ def delete_worker_monthly_pay(
     """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
     
     return {"message": "Worker removed from this month's payroll roster."}
+
+# =========================================================================
+# WORKER DAILY TIMESHEET ATTENDANCE CALENDAR & PAYROLL ENGINE
+# =========================================================================
+@app.get("/api/payroll/timesheet")
+def get_worker_timesheet(
+    employee_id: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020, le=2050),
+    user: dict = Depends(require_roles(["admin", "hr_manager", "viewer"]))
+):
+    """
+    Retrieves the daily attendance & working hours calendar for an employee in a given month.
+    Combines existing logged records with default dates for full calendar display.
+    """
+    emp = db.query_one("""
+        SELECT e.*, d.name as department_name 
+        FROM employees e 
+        LEFT JOIN departments d ON e.department_id = d.id 
+        WHERE e.id = ?
+    """, (employee_id,))
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    num_days = calendar.monthrange(year, month)[1]
+    
+    # Query logged daily timesheets
+    logged_rows = db.query_all("""
+        SELECT * FROM worker_timesheets 
+        WHERE employee_id = ? AND year = ? AND month = ?
+        ORDER BY day ASC
+    """, (employee_id, year, month))
+    logged_map = {row["day"]: row for row in logged_rows}
+    
+    # Check if a payroll detail record already exists for this worker & month
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (month, year))
+    detail = None
+    if run:
+        detail = db.query_one("SELECT * FROM payroll_details WHERE payroll_run_id = ? AND employee_id = ?", (run["id"], employee_id))
+        
+    # Build complete calendar days
+    calendar_days = []
+    for day in range(1, num_days + 1):
+        dt = date(year, month, day)
+        weekday_name = dt.strftime("%a")  # Mon, Tue, etc.
+        is_friday = dt.weekday() == 4     # In Saudi Arabia, Friday is rest day (weekday 4 in Python)
+        
+        if day in logged_map:
+            rec = logged_map[day]
+            calendar_days.append({
+                "day": day,
+                "date": rec["timesheet_date"],
+                "weekday": weekday_name,
+                "regular_hours": rec["regular_hours"],
+                "ot_hours": rec["ot_hours"],
+                "day_type": rec["day_type"],
+                "meal_allowance": rec["meal_allowance"],
+                "notes": rec.get("notes") or ""
+            })
+        else:
+            # Default suggestion: Fridays are RestDay, other days are Regular 8.0h
+            def_type = "RestDay" if is_friday else "Regular"
+            def_hours = 0.0 if is_friday else 8.0
+            calendar_days.append({
+                "day": day,
+                "date": dt.isoformat(),
+                "weekday": weekday_name,
+                "regular_hours": def_hours,
+                "ot_hours": 0.0,
+                "day_type": def_type,
+                "meal_allowance": 0 if is_friday else 1,
+                "notes": ""
+            })
+            
+    base_sal = float(emp["basic_salary"] or 0)
+    daily_rate = float(detail.get("daily_rate") or (base_sal / 30.0 if base_sal > 0 else 83.33333333)) if detail else (base_sal / 30.0 if base_sal > 0 else 83.33333333)
+    hourly_rate = float(detail.get("hourly_rate") or (daily_rate / 8.0 if daily_rate > 0 else 10.42)) if detail else (daily_rate / 8.0 if daily_rate > 0 else 10.42)
+    ot_rate = float(detail.get("ot_rate") or round(hourly_rate * 1.5, 2)) if detail else round(hourly_rate * 1.5, 2)
+    
+    return {
+        "employee": {
+            "id": emp["id"],
+            "emp_code": emp["emp_code"],
+            "first_name": emp["first_name"],
+            "last_name": emp["last_name"],
+            "designation": emp["designation"] or "Electrician Foreman",
+            "department_name": emp.get("department_name") or "Operations",
+            "is_saudi": emp["is_saudi"],
+            "basic_salary": base_sal,
+            "daily_rate": daily_rate,
+            "hourly_rate": hourly_rate,
+            "ot_rate": ot_rate
+        },
+        "month": month,
+        "year": year,
+        "days": calendar_days,
+        "detail": detail
+    }
+
+@app.post("/api/payroll/timesheet/bulk-save")
+def save_worker_timesheet_and_payroll(
+    req: BulkTimesheetSaveRequest,
+    user: dict = Depends(require_roles(["admin", "hr_manager"]))
+):
+    """
+    Saves daily attendance & hours timesheet for an employee and automatically calculates
+    the monthly payslip breakdown and updates the monthly payroll run.
+    """
+    emp = db.query_one("SELECT * FROM employees WHERE id = ?", (req.employee_id,))
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found.")
+        
+    # 1. Upsert daily timesheet records
+    for d in req.days:
+        db.execute_cmd("""
+            INSERT INTO worker_timesheets (
+                employee_id, timesheet_date, year, month, day,
+                regular_hours, ot_hours, day_type, meal_allowance, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(employee_id, timesheet_date) DO UPDATE SET
+                regular_hours = excluded.regular_hours,
+                ot_hours = excluded.ot_hours,
+                day_type = excluded.day_type,
+                meal_allowance = excluded.meal_allowance,
+                notes = excluded.notes;
+        """, (
+            req.employee_id, d.date, req.year, req.month, d.day,
+            float(d.regular_hours or 0), float(d.ot_hours or 0),
+            d.day_type or "Regular", int(d.meal_allowance or 0), d.notes or ""
+        ))
+        
+    # 2. Aggregate timesheet totals
+    tot_regular_hours = sum(float(d.regular_hours or 0) for d in req.days)
+    tot_ot_hours = sum(float(d.ot_hours or 0) for d in req.days)
+    
+    # Days worked: any day where regular hours > 0 or marked Regular
+    days_worked = sum(1 for d in req.days if float(d.regular_hours or 0) > 0 or d.day_type == 'Regular')
+    
+    # Friday / Rest Day hours
+    tot_rest_day_hours = sum(float(d.regular_hours or 0) for d in req.days if d.day_type == 'RestDay')
+    if tot_rest_day_hours == 0:
+        # Check if user marked Friday days
+        tot_rest_day_hours = sum(8.0 for d in req.days if d.day_type == 'RestDay')
+        
+    # Holiday hours
+    tot_holiday_hours = sum(float(d.regular_hours or 0) for d in req.days if d.day_type == 'Holiday')
+    if tot_holiday_hours == 0:
+        tot_holiday_hours = sum(8.0 for d in req.days if d.day_type == 'Holiday')
+        
+    # Meal allowances count
+    tot_meal_qty = sum(1 for d in req.days if int(d.meal_allowance or 0) == 1)
+    
+    # 3. Rates & Financial Calculations
+    base_sal = float(emp["basic_salary"] or 0)
+    daily_rate = float(req.daily_rate if req.daily_rate is not None else (base_sal / 30.0 if base_sal > 0 else 83.33333333))
+    hourly_rate = float(req.hourly_rate if req.hourly_rate is not None else (daily_rate / 8.0 if daily_rate > 0 else 10.42))
+    ot_rate = float(req.ot_rate if req.ot_rate is not None else round(hourly_rate * 1.5, 2))
+    
+    regular_pay = round(tot_regular_hours * hourly_rate, 2)
+    ot_pay = round(tot_ot_hours * ot_rate, 2)
+    subtotal_pay = round(regular_pay + ot_pay, 2)
+    
+    rest_day_pay = round(tot_rest_day_hours * hourly_rate, 2)
+    holiday_pay = round(tot_holiday_hours * hourly_rate, 2)
+    
+    meal_rate = float(req.meal_rate or 10.0)
+    meal_allowance_pay = round(tot_meal_qty * meal_rate, 2)
+    
+    adjustment_add = float(req.adjustment_add or 0.0)
+    total_pay = round(subtotal_pay + rest_day_pay + holiday_pay + meal_allowance_pay + adjustment_add, 2)
+    
+    # Deductions
+    wps_deduction = float(req.wps_deduction or 0.0)
+    water_bill = float(req.water_bill or 0.0)
+    other_ded = float(req.other_deductions or 0.0)
+    
+    gosi_res = SaudiHREngine.calculate_gosi(emp["is_saudi"] == 1, total_pay, 0.0)
+    gosi_emp = gosi_res["employee_deduction"]
+    gosi_empr = gosi_res["employer_contribution"]
+    
+    total_deductions = round(wps_deduction + water_bill + other_ded + gosi_emp, 2)
+    net_pay = max(0.0, round(total_pay - total_deductions, 2))
+    
+    cash_advance = float(req.cash_advance or 0.0)
+    adjustment_sub = float(req.adjustment_sub or 0.0)
+    actual_pay = max(0.0, round(net_pay - cash_advance - adjustment_sub, 2))
+    
+    # 4. Sync with Payroll Run & Payroll Details
+    run = db.query_one("SELECT * FROM payroll_runs WHERE payroll_month = ? AND payroll_year = ?", (req.month, req.year))
+    if not run:
+        run_id = db.execute_cmd("""
+            INSERT INTO payroll_runs (payroll_month, payroll_year, total_basic, total_allowances, total_deductions, total_net_pay, status, processed_at)
+            VALUES (?, ?, 0.0, 0.0, 0.0, 0.0, 'Approved', ?)
+        """, (req.month, req.year, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    else:
+        run_id = run["id"]
+        
+    cutoff_period = req.cutoff_period or f"{datetime(req.year, req.month, 1).strftime('%B 01')}-{calendar.monthrange(req.year, req.month)[1]}, {req.year}"
+    
+    existing_detail = db.query_one("SELECT id FROM payroll_details WHERE payroll_run_id = ? AND employee_id = ?", (run_id, req.employee_id))
+    if existing_detail:
+        db.execute_cmd("""
+            UPDATE payroll_details SET
+                basic_salary = ?,
+                housing_allowance = ?,
+                transport_allowance = ?,
+                other_allowances = ?,
+                gross_salary = ?,
+                gosi_employee = ?,
+                gosi_employer = ?,
+                other_deductions = ?,
+                net_salary = ?,
+                cutoff_period = ?,
+                days_worked = ?,
+                daily_rate = ?,
+                hourly_rate = ?,
+                ot_rate = ?,
+                working_hours = ?,
+                regular_pay = ?,
+                ot_hours = ?,
+                ot_pay = ?,
+                subtotal_pay = ?,
+                rest_day_hours = ?,
+                rest_day_pay = ?,
+                holiday_hours = ?,
+                holiday_pay = ?,
+                meal_allowance_qty = ?,
+                meal_allowance_rate = ?,
+                meal_allowance_pay = ?,
+                adjustment_add = ?,
+                total_pay = ?,
+                wps_deduction = ?,
+                water_bill = ?,
+                total_deductions = ?,
+                cash_advance = ?,
+                adjustment_sub = ?,
+                actual_pay = ?
+            WHERE id = ?
+        """, (
+            regular_pay, meal_allowance_pay, 0.0, adjustment_add, total_pay, gosi_emp, gosi_empr, other_ded, net_pay,
+            cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate, tot_regular_hours, regular_pay,
+            tot_ot_hours, ot_pay, subtotal_pay, tot_rest_day_hours, rest_day_pay, tot_holiday_hours, holiday_pay,
+            tot_meal_qty, meal_rate, meal_allowance_pay, adjustment_add, total_pay,
+            wps_deduction, water_bill, total_deductions, cash_advance, adjustment_sub, actual_pay,
+            existing_detail["id"]
+        ))
+        detail_id = existing_detail["id"]
+    else:
+        detail_id = db.execute_cmd("""
+            INSERT INTO payroll_details (
+                payroll_run_id, employee_id, basic_salary, housing_allowance,
+                transport_allowance, other_allowances, gross_salary,
+                gosi_employee, gosi_employer, other_deductions, net_salary,
+                cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate,
+                working_hours, regular_pay, ot_hours, ot_pay, subtotal_pay,
+                rest_day_hours, rest_day_pay, holiday_hours, holiday_pay,
+                meal_allowance_qty, meal_allowance_rate, meal_allowance_pay,
+                adjustment_add, total_pay, wps_deduction, water_bill,
+                total_deductions, cash_advance, adjustment_sub, actual_pay
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            run_id, req.employee_id, regular_pay, meal_allowance_pay, 0.0, adjustment_add, total_pay, gosi_emp, gosi_empr, other_ded, net_pay,
+            cutoff_period, days_worked, daily_rate, hourly_rate, ot_rate, tot_regular_hours, regular_pay,
+            tot_ot_hours, ot_pay, subtotal_pay, tot_rest_day_hours, rest_day_pay, tot_holiday_hours, holiday_pay,
+            tot_meal_qty, meal_rate, meal_allowance_pay, adjustment_add, total_pay,
+            wps_deduction, water_bill, total_deductions, cash_advance, adjustment_sub, actual_pay
+        ))
+        
+    # Recompute parent run totals
+    details = db.query_all("SELECT * FROM payroll_details WHERE payroll_run_id = ?", (run_id,))
+    tot_basic = sum(float(d["basic_salary"] or 0) for d in details)
+    tot_allowances = sum(float(d["housing_allowance"] or 0) + float(d["transport_allowance"] or 0) + float(d["other_allowances"] or 0) for d in details)
+    tot_deductions = sum(float(d["gosi_employee"] or 0) + float(d["other_deductions"] or 0) for d in details)
+    tot_net = sum(float(d["net_salary"] or 0) for d in details)
+    
+    db.execute_cmd("""
+        UPDATE payroll_runs SET
+            total_basic = ?,
+            total_allowances = ?,
+            total_deductions = ?,
+            total_net_pay = ?
+        WHERE id = ?
+    """, (tot_basic, tot_allowances, tot_deductions, tot_net, run_id))
+    
+    return {
+        "message": f"Timesheet calendar and payslip saved for {emp['first_name']} {emp['last_name']}",
+        "detail_id": detail_id,
+        "total_pay": total_pay,
+        "net_pay": net_pay,
+        "actual_pay": actual_pay,
+        "working_hours": tot_regular_hours,
+        "ot_hours": tot_ot_hours,
+        "days_worked": days_worked
+    }
 
 @app.get("/api/payroll/monthly-roster/export/pdf")
 def export_monthly_payroll_schedule_pdf(

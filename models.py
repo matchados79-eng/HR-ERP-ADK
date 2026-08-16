@@ -189,3 +189,32 @@ class WorkerMonthlyPayRequest(BaseModel):
 class BackupRestoreRequest(BaseModel):
     backup_json: Optional[str] = None
 
+class DailyTimesheetEntry(BaseModel):
+    day: int
+    date: str
+    regular_hours: float = 0.0
+    ot_hours: float = 0.0
+    day_type: str = "Regular"  # Regular, RestDay, Holiday, Leave, Absent
+    meal_allowance: int = 0
+    notes: Optional[str] = None
+
+class BulkTimesheetSaveRequest(BaseModel):
+    employee_id: int
+    month: int
+    year: int
+    cutoff_period: Optional[str] = None
+    days: List[DailyTimesheetEntry]
+    
+    # Financial Deductions & Overrides
+    water_bill: Optional[float] = 0.0
+    wps_deduction: Optional[float] = 0.0
+    other_deductions: Optional[float] = 0.0
+    cash_advance: Optional[float] = 0.0
+    adjustment_add: Optional[float] = 0.0
+    adjustment_sub: Optional[float] = 0.0
+    meal_rate: Optional[float] = 10.0
+    daily_rate: Optional[float] = None
+    hourly_rate: Optional[float] = None
+    ot_rate: Optional[float] = None
+    remarks: Optional[str] = None
+

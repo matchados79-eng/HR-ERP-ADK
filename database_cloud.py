@@ -242,6 +242,25 @@ def init_db():
     );
     """)
     
+    # Worker Daily Timesheets & Attendance Calendar
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS worker_timesheets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        timesheet_date TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        day INTEGER NOT NULL,
+        regular_hours REAL DEFAULT 0.0,
+        ot_hours REAL DEFAULT 0.0,
+        day_type TEXT DEFAULT 'Regular',
+        meal_allowance INTEGER DEFAULT 0,
+        notes TEXT,
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+        UNIQUE(employee_id, timesheet_date)
+    );
+    """)
+
     # Settings
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -257,6 +276,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_docs_emp ON documents(employee_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_payroll_dtl_run ON payroll_details(payroll_run_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_payroll_dtl_emp ON payroll_details(employee_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_timesheets_emp ON worker_timesheets(employee_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_timesheets_period ON worker_timesheets(year, month);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_company ON supplier_payments(company_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_status ON supplier_payments(status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sp_logs_sp ON supplier_payment_logs(supplier_payment_id);")
