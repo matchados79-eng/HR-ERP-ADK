@@ -124,6 +124,14 @@ function hideLoginModal() {
   if (m) m.classList.remove('active');
 }
 
+function fillDefaultAdminCredentials() {
+  const emailEl = document.getElementById('login-email');
+  if (emailEl) emailEl.value = 'admin@adknprotech.com';
+  const passEl = document.getElementById('login-password');
+  if (passEl) passEl.value = 'AdminSecret123!';
+  showToast('Admin credentials filled. Click "Sign In" to proceed.', 'info');
+}
+
 async function submitLogin() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;

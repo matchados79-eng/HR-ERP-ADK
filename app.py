@@ -128,10 +128,14 @@ def read_root():
             return f.read()
     return "<h1>Saudi HR ERP System Running</h1>"
 
-# --- Authentication & User Management Endpoints ---
 @app.post("/api/auth/login")
 def login(req: LoginRequest):
-    user = db.query_one("SELECT * FROM users WHERE email = ?", (req.email,))
+    input_email = req.email.strip()
+    if input_email.lower() in ["admin", "administrator"]:
+        user = db.query_one("SELECT * FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1")
+    else:
+        user = db.query_one("SELECT * FROM users WHERE LOWER(email) = LOWER(?)", (input_email,))
+        
     if not user or not auth.verify_password(req.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
         
